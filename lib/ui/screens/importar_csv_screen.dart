@@ -80,7 +80,7 @@ class _ImportarCsvScreenState extends State<ImportarCsvScreen> {
           children: [
             Text(
               'Importar productos desde CSV de Bsale',
-              style: const TextStyle(fontSize: 18),
+              style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
             const Text(

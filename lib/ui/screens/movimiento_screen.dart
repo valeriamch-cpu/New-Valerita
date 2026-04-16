@@ -136,7 +136,6 @@ class _MovimientoScreenState extends State<MovimientoScreen> {
           const SizedBox(height: 12),
           Consumer<InventarioProvider>(
             builder: (context, inv, _) => DropdownButtonFormField<Caja>(
-              // ignore: deprecated_member_use
               value: _caja,
               decoration: const InputDecoration(
                 labelText: 'Caja destino/origen',
