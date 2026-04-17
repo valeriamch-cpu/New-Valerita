@@ -27,8 +27,15 @@ class AppHandler(SimpleHTTPRequestHandler):
         return self.server.inventory_service  # type: ignore[attr-defined]
 
     def do_POST(self) -> None:
-        if self.path == "/api/login":
-            self.handle_login()
+        routes = {
+            "/api/login": self.handle_login,
+            "/api/entrada": self.handle_entrada,
+            "/api/salida": self.handle_salida,
+            "/api/movimiento": self.handle_movimiento,
+        }
+        handler = routes.get(self.path)
+        if handler:
+            handler()
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -36,17 +43,13 @@ class AppHandler(SimpleHTTPRequestHandler):
         if self.path.startswith("/api/search"):
             self.handle_search()
             return
-        if self.path == "/":
+        if self.path in ("/", "/dashboard.html"):
             self.path = "/index.html"
         return super().do_GET()
 
     def handle_login(self) -> None:
-        length = int(self.headers.get("Content-Length", "0"))
-        payload = self.rfile.read(length)
-        try:
-            data = json.loads(payload.decode("utf-8"))
-        except json.JSONDecodeError:
-            self.send_json({"error": "JSON inválido"}, HTTPStatus.BAD_REQUEST)
+        data = self.read_json_body()
+        if data is None:
             return
 
         usuario = data.get("usuario", "")
@@ -57,17 +60,10 @@ class AppHandler(SimpleHTTPRequestHandler):
 
         token = secrets.token_urlsafe(24)
         TOKENS.add(token)
-        self.send_json({"token": token}, HTTPStatus.OK)
+        self.send_json({"token": token, "usuario": usuario}, HTTPStatus.OK)
 
     def handle_search(self) -> None:
-        auth = self.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
-            self.send_json({"error": "No autorizado"}, HTTPStatus.UNAUTHORIZED)
-            return
-
-        token = auth.replace("Bearer ", "", 1)
-        if token not in TOKENS:
-            self.send_json({"error": "Token inválido"}, HTTPStatus.UNAUTHORIZED)
+        if not self.require_auth():
             return
 
         parsed = urlparse(self.path)
@@ -76,8 +72,117 @@ class AppHandler(SimpleHTTPRequestHandler):
             sku=self.first(query, "sku"),
             codigo_barra=self.first(query, "codigo_barra"),
             marca=self.first(query, "marca"),
+            contenedor=self.first(query, "contenedor"),
         )
         self.send_json({"items": items}, HTTPStatus.OK)
+
+    def handle_entrada(self) -> None:
+        if not self.require_auth():
+            return
+        data = self.read_json_body()
+        if data is None:
+            return
+
+        required = ["sku", "marca", "nombre", "rack", "contenedor", "cantidad"]
+        missing = [k for k in required if k not in data or data[k] in ("", None)]
+        if missing:
+            self.send_json({"error": f"Campos requeridos: {', '.join(missing)}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            self.svc.registrar_entrada(
+                sku=str(data["sku"]),
+                codigo_barra=str(data.get("codigo_barra") or "") or None,
+                marca=str(data["marca"]),
+                nombre=str(data["nombre"]),
+                rack=str(data["rack"]),
+                contenedor=str(data["contenedor"]),
+                cantidad=int(data["cantidad"]),
+                usuario="web",
+            )
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        self.send_json({"ok": True, "message": "Entrada registrada"}, HTTPStatus.OK)
+
+    def handle_salida(self) -> None:
+        if not self.require_auth():
+            return
+        data = self.read_json_body()
+        if data is None:
+            return
+
+        required = ["sku", "rack", "contenedor", "cantidad"]
+        missing = [k for k in required if k not in data or data[k] in ("", None)]
+        if missing:
+            self.send_json({"error": f"Campos requeridos: {', '.join(missing)}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            self.svc.registrar_salida(
+                sku=str(data["sku"]),
+                rack=str(data["rack"]),
+                contenedor=str(data["contenedor"]),
+                cantidad=int(data["cantidad"]),
+                usuario="web",
+                eliminar_si_cero=True,
+            )
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        self.send_json({"ok": True, "message": "Salida registrada"}, HTTPStatus.OK)
+
+    def handle_movimiento(self) -> None:
+        if not self.require_auth():
+            return
+        data = self.read_json_body()
+        if data is None:
+            return
+
+        required = ["sku", "origen_rack", "origen_contenedor", "destino_rack", "destino_contenedor", "cantidad"]
+        missing = [k for k in required if k not in data or data[k] in ("", None)]
+        if missing:
+            self.send_json({"error": f"Campos requeridos: {', '.join(missing)}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            self.svc.mover(
+                sku=str(data["sku"]),
+                origen_rack=str(data["origen_rack"]),
+                origen_contenedor=str(data["origen_contenedor"]),
+                destino_rack=str(data["destino_rack"]),
+                destino_contenedor=str(data["destino_contenedor"]),
+                cantidad=int(data["cantidad"]),
+                usuario="web",
+            )
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        self.send_json({"ok": True, "message": "Movimiento registrado"}, HTTPStatus.OK)
+
+    def read_json_body(self) -> dict | None:
+        length = int(self.headers.get("Content-Length", "0"))
+        payload = self.rfile.read(length)
+        try:
+            return json.loads(payload.decode("utf-8"))
+        except json.JSONDecodeError:
+            self.send_json({"error": "JSON inválido"}, HTTPStatus.BAD_REQUEST)
+            return None
+
+    def require_auth(self) -> bool:
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            self.send_json({"error": "No autorizado"}, HTTPStatus.UNAUTHORIZED)
+            return False
+
+        token = auth.replace("Bearer ", "", 1)
+        if token not in TOKENS:
+            self.send_json({"error": "Token inválido"}, HTTPStatus.UNAUTHORIZED)
+            return False
+        return True
 
     @staticmethod
     def first(query: dict[str, list[str]], key: str) -> str | None:
