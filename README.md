@@ -1,39 +1,43 @@
 # New-Valerita
 
-Backend base para evolucionar la app de bodega actual (AppSheet) a una solución mantenible por código.
+Backend + interfaz web inicial para mejorar la operación actual de bodega (hoy en AppSheet).
 
-## Objetivo
+## Lo que ya puedes usar
 
-Permitir encontrar ubicación exacta de productos y operar inventario por:
+1. **Login web** con usuario y clave.
+2. **Pantalla buscador** por `SKU`, `código de barras` o `marca`.
+3. Resultado con ubicación exacta (`rack` y `contenedor`) y cantidad.
+4. Soporte de lógica inventario en backend (`entrada`, `salida`, `movimiento`, `buscar`).
 
-- Código de barras
-- SKU
-- Marca
-- Contenedor
+## Usuarios demo
 
-También soporta múltiples ubicaciones para un mismo SKU y salida total/parcial por ubicación.
+- `admin / 1234`
+- `bodega / valerita2026`
 
-## Qué incluye esta versión
+## Ejecutar la app
 
-- **Modelo de datos SQL** en `db/schema.sql`.
-- **Servicio de inventario** en Python (`InventoryService`) con operaciones de entrada/salida/movimiento/búsqueda.
-- **Pruebas automatizadas** de escenarios críticos.
-- **Guía de migración** desde AppSheet.
+```bash
+python server.py
+```
+
+Abrir en navegador:
+
+- `http://localhost:8000`
 
 ## Estructura
 
-- `db/schema.sql`
-- `src/new_valerita/inventory.py`
-- `tests/test_inventory.py`
-- `docs/api.md`
-- `docs/appsheet-integration.md`
+- `server.py`: servidor HTTP con login y API de búsqueda.
+- `web/index.html`: página de inicio de sesión.
+- `web/dashboard.html`: buscador de productos y ubicación.
+- `src/new_valerita/inventory.py`: reglas de inventario.
+- `db/schema.sql`: esquema SQL.
 
-## Ejecución de pruebas
+## Tests
 
 ```bash
 python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-## Próximo paso
+## Siguiente mejora recomendada
 
-Con acceso a la estructura real de la app en AppSheet, podemos construir el importador de datos y un API HTTP (FastAPI) manteniendo exactamente tus reglas actuales.
+Con tus tablas reales de AppSheet, conectamos importación directa y agregamos módulo de entradas/salidas desde interfaz (no solo búsqueda).

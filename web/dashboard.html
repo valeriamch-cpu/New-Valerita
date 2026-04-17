@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Valerita - Buscador</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f6fb; margin:0; }
+    header { background:#1f4db8; color:white; padding:14px 20px; display:flex; justify-content:space-between; }
+    .container { max-width:900px; margin:20px auto; background:white; border-radius:12px; padding:20px; box-shadow:0 8px 24px rgba(0,0,0,.06); }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input { padding:10px; border-radius:8px; border:1px solid #cfd6e6; min-width:160px; }
+    button { padding:10px 14px; border:none; border-radius:8px; background:#2166f3; color:white; cursor:pointer; }
+    table { width:100%; border-collapse:collapse; margin-top:16px; }
+    th, td { border-bottom:1px solid #e8ecf4; text-align:left; padding:10px; }
+    .muted { color:#566; font-size:14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>New Valerita - Ubicaciones</strong>
+    <button id="logout">Cerrar sesión</button>
+  </header>
+
+  <div class="container">
+    <div class="row">
+      <input id="sku" placeholder="SKU" />
+      <input id="codigo_barra" placeholder="Código de barras" />
+      <input id="marca" placeholder="Marca" />
+      <button id="buscar">Buscar</button>
+    </div>
+    <p class="muted">Puedes buscar por SKU, código o marca para encontrar rack/contenedor.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Código</th>
+          <th>Marca</th>
+          <th>Producto</th>
+          <th>Rack</th>
+          <th>Contenedor</th>
+          <th>Cantidad</th>
+        </tr>
+      </thead>
+      <tbody id="resultados"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/index.html';
+
+    document.getElementById('logout').onclick = () => {
+      localStorage.removeItem('token');
+      window.location.href = '/index.html';
+    };
+
+    document.getElementById('buscar').onclick = async () => {
+      const params = new URLSearchParams();
+      ['sku', 'codigo_barra', 'marca'].forEach((id) => {
+        const v = document.getElementById(id).value.trim();
+        if (v) params.set(id, v);
+      });
+
+      const res = await fetch(`/api/search?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/index.html';
+        return;
+      }
+      const data = await res.json();
+      const tbody = document.getElementById('resultados');
+      tbody.innerHTML = '';
+
+      data.items.forEach((item) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.sku}</td>
+          <td>${item.codigo_barra ?? ''}</td>
+          <td>${item.marca}</td>
+          <td>${item.nombre}</td>
+          <td>${item.rack}</td>
+          <td>${item.contenedor}</td>
+          <td>${item.cantidad}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    };
+  </script>
+</body>
+</html>
