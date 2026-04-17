@@ -28,7 +28,8 @@ Abrir en navegador:
 
 - `server.py`: servidor HTTP con login y API de búsqueda.
 - `web/index.html`: página de inicio de sesión.
-- `web/dashboard.html`: buscador de productos y ubicación.
+- `web/dashboard.html`: buscador de productos y ubicación con diseño tipo app.
+- `web/styles.css`: estilos visuales mobile-first.
 - `src/new_valerita/inventory.py`: reglas de inventario.
 - `db/schema.sql`: esquema SQL.
 
