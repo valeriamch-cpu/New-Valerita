@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Valerita App</title>
+  <style>
+    :root { --bg:#0f172a; --panel:#111c33; --card:#182845; --line:#2a3d62; --txt:#eef4ff; --muted:#95a8cc; --ok:#16a34a; --danger:#ef4444; --btn:#3b82f6; }
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0%,#1f3d74 0%,#0f172a 40%);color:var(--txt);font-family:Inter,system-ui,sans-serif}
+    .phone{max-width:430px;min-height:100vh;margin:auto;background:rgba(8,12,24,.78);backdrop-filter:blur(4px);border-left:1px solid #203357;border-right:1px solid #203357}
+    .head{padding:18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+    .logo{font-weight:800;font-size:20px}.muted{color:var(--muted);font-size:13px}
+    .content{padding:14px;display:grid;gap:12px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+    .field{margin-bottom:10px} label{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
+    input,select{width:100%;padding:11px;border-radius:10px;border:1px solid #35507e;background:#0f1a31;color:#eaf2ff}
+    button{border:0;background:var(--btn);color:white;padding:11px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+    .tab{background:#0f1b32;border:1px solid var(--line);padding:9px;border-radius:10px;text-align:center;font-size:12px;color:#bdd0f2;cursor:pointer}
+    .tab.active{background:#1b3d72;color:white;border-color:#4f78ba}
+    .view{display:none}.view.active{display:block}
+    .result{background:#0f1b32;border:1px solid #2d4269;border-radius:12px;padding:10px;margin-top:8px}
+    .status{font-size:13px;min-height:16px}.ok{color:#4ade80}.err{color:#fca5a5}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="phone">
+    <header class="head">
+      <div>
+        <div class="logo">New Valerita</div>
+        <div class="muted" id="subtitulo">Inicia sesión para comenzar</div>
+      </div>
+      <button id="logout" class="hidden">Salir</button>
+    </header>
+
+    <main class="content">
+      <section id="loginView" class="card view active">
+        <h3>Acceso</h3>
+        <div class="field"><label>Usuario</label><input id="usuario" placeholder="bodega"></div>
+        <div class="field"><label>Clave</label><input id="clave" type="password" placeholder="••••••"></div>
+        <button id="loginBtn">Entrar</button>
+        <p id="loginStatus" class="status"></p>
+      </section>
+
+      <section id="appView" class="view">
+        <div class="tabs">
+          <div class="tab active" data-view="buscar">Buscar</div>
+          <div class="tab" data-view="entrada">Entrada</div>
+          <div class="tab" data-view="salida">Salida</div>
+          <div class="tab" data-view="mov">Mover</div>
+        </div>
+
+        <article id="buscar" class="card pane active">
+          <h3>Buscar ubicación</h3>
+          <div class="field"><label>SKU</label><input id="f_sku"></div>
+          <div class="field"><label>Código de barras</label><input id="f_codigo"></div>
+          <div class="field"><label>Marca</label><input id="f_marca"></div>
+          <button id="buscarBtn">Buscar</button>
+          <div id="resultados"></div>
+        </article>
+
+        <article id="entrada" class="card pane" style="display:none">
+          <h3>Registrar entrada</h3>
+          <div class="field"><label>SKU</label><input id="e_sku"></div>
+          <div class="field"><label>Código barra</label><input id="e_codigo"></div>
+          <div class="field"><label>Marca</label><input id="e_marca"></div>
+          <div class="field"><label>Nombre</label><input id="e_nombre"></div>
+          <div class="row">
+            <div class="field"><label>Rack</label><input id="e_rack"></div>
+            <div class="field"><label>Contenedor</label><input id="e_cont"></div>
+          </div>
+          <div class="field"><label>Cantidad</label><input id="e_cant" type="number"></div>
+          <button id="entradaBtn">Guardar entrada</button>
+          <p id="entradaStatus" class="status"></p>
+        </article>
+
+        <article id="salida" class="card pane" style="display:none">
+          <h3>Registrar salida</h3>
+          <div class="field"><label>SKU</label><input id="s_sku"></div>
+          <div class="row">
+            <div class="field"><label>Rack</label><input id="s_rack"></div>
+            <div class="field"><label>Contenedor</label><input id="s_cont"></div>
+          </div>
+          <div class="field"><label>Cantidad</label><input id="s_cant" type="number"></div>
+          <button id="salidaBtn">Guardar salida</button>
+          <p id="salidaStatus" class="status"></p>
+        </article>
+
+        <article id="mov" class="card pane" style="display:none">
+          <h3>Mover producto</h3>
+          <div class="field"><label>SKU</label><input id="m_sku"></div>
+          <div class="row">
+            <div class="field"><label>Origen Rack</label><input id="m_or_rack"></div>
+            <div class="field"><label>Origen Cont.</label><input id="m_or_cont"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Destino Rack</label><input id="m_de_rack"></div>
+            <div class="field"><label>Destino Cont.</label><input id="m_de_cont"></div>
+          </div>
+          <div class="field"><label>Cantidad</label><input id="m_cant" type="number"></div>
+          <button id="movBtn">Guardar movimiento</button>
+          <p id="movStatus" class="status"></p>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const tokenKey = 'token';
+    const state = { token: localStorage.getItem(tokenKey) || '' };
+
+    const loginView = document.getElementById('loginView');
+    const appView = document.getElementById('appView');
+    const logoutBtn = document.getElementById('logout');
+    const subtitulo = document.getElementById('subtitulo');
+
+    function setSession(active) {
+      loginView.classList.toggle('active', !active);
+      appView.classList.toggle('active', active);
+      logoutBtn.classList.toggle('hidden', !active);
+      subtitulo.textContent = active ? 'Operación diaria de bodega' : 'Inicia sesión para comenzar';
+    }
+
+    async function api(path, method='GET', body=null) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (state.token) headers.Authorization = `Bearer ${state.token}`;
+      const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      const payload = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        state.token = '';
+        localStorage.removeItem(tokenKey);
+        setSession(false);
+      }
+      return { ok: res.ok, payload };
+    }
+
+    function status(el, msg, ok=false) {
+      el.textContent = msg;
+      el.className = `status ${ok ? 'ok' : 'err'}`;
+    }
+
+    document.getElementById('loginBtn').onclick = async () => {
+      const usuario = document.getElementById('usuario').value.trim();
+      const clave = document.getElementById('clave').value;
+      const { ok, payload } = await api('/api/login', 'POST', { usuario, clave });
+      const el = document.getElementById('loginStatus');
+      if (!ok) return status(el, payload.error || 'No se pudo iniciar sesión');
+      state.token = payload.token;
+      localStorage.setItem(tokenKey, payload.token);
+      setSession(true);
+      status(el, 'Ingreso correcto', true);
+    };
+
+    logoutBtn.onclick = () => {
+      state.token = '';
+      localStorage.removeItem(tokenKey);
+      setSession(false);
+    };
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.onclick = () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const target = tab.dataset.view;
+        document.querySelectorAll('.pane').forEach(p => p.style.display = 'none');
+        document.getElementById(target).style.display = 'block';
+      };
+    });
+
+    document.getElementById('buscarBtn').onclick = async () => {
+      const params = new URLSearchParams();
+      const sku = document.getElementById('f_sku').value.trim();
+      const codigo_barra = document.getElementById('f_codigo').value.trim();
+      const marca = document.getElementById('f_marca').value.trim();
+      if (sku) params.set('sku', sku);
+      if (codigo_barra) params.set('codigo_barra', codigo_barra);
+      if (marca) params.set('marca', marca);
+
+      const { ok, payload } = await api(`/api/search?${params.toString()}`);
+      const out = document.getElementById('resultados');
+      if (!ok) {
+        out.innerHTML = `<p class="status err">${payload.error || 'Error al buscar'}</p>`;
+        return;
+      }
+      out.innerHTML = '';
+      (payload.items || []).forEach((i) => {
+        const d = document.createElement('div');
+        d.className = 'result';
+        d.innerHTML = `<strong>${i.nombre}</strong><br>SKU: ${i.sku}<br>Marca: ${i.marca}<br>Rack: ${i.rack} · Contenedor: ${i.contenedor}<br>Cant: ${i.cantidad}`;
+        out.appendChild(d);
+      });
+      if (!payload.items || !payload.items.length) out.innerHTML = '<p class="muted">Sin resultados</p>';
+    };
+
+    document.getElementById('entradaBtn').onclick = async () => {
+      const body = {
+        sku: document.getElementById('e_sku').value.trim(),
+        codigo_barra: document.getElementById('e_codigo').value.trim(),
+        marca: document.getElementById('e_marca').value.trim(),
+        nombre: document.getElementById('e_nombre').value.trim(),
+        rack: document.getElementById('e_rack').value.trim(),
+        contenedor: document.getElementById('e_cont').value.trim(),
+        cantidad: Number(document.getElementById('e_cant').value || 0),
+      };
+      const { ok, payload } = await api('/api/entrada', 'POST', body);
+      status(document.getElementById('entradaStatus'), payload.message || payload.error || 'Error', ok);
+    };
+
+    document.getElementById('salidaBtn').onclick = async () => {
+      const body = {
+        sku: document.getElementById('s_sku').value.trim(),
+        rack: document.getElementById('s_rack').value.trim(),
+        contenedor: document.getElementById('s_cont').value.trim(),
+        cantidad: Number(document.getElementById('s_cant').value || 0),
+      };
+      const { ok, payload } = await api('/api/salida', 'POST', body);
+      status(document.getElementById('salidaStatus'), payload.message || payload.error || 'Error', ok);
+    };
+
+    document.getElementById('movBtn').onclick = async () => {
+      const body = {
+        sku: document.getElementById('m_sku').value.trim(),
+        origen_rack: document.getElementById('m_or_rack').value.trim(),
+        origen_contenedor: document.getElementById('m_or_cont').value.trim(),
+        destino_rack: document.getElementById('m_de_rack').value.trim(),
+        destino_contenedor: document.getElementById('m_de_cont').value.trim(),
+        cantidad: Number(document.getElementById('m_cant').value || 0),
+      };
+      const { ok, payload } = await api('/api/movimiento', 'POST', body);
+      status(document.getElementById('movStatus'), payload.message || payload.error || 'Error', ok);
+    };
+
+    setSession(Boolean(state.token));
+  </script>
+</body>
+</html>
