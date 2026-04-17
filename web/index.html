@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Valerita | Login</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="brand">
+      <div class="brand-pill">NV</div>
+      <div>
+        <strong>New Valerita</strong>
+        <div class="subtitle">Control de ubicaciones en bodega</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Iniciar sesión</h2>
+      <p class="subtitle">Ingresa con tu usuario para acceder al buscador.</p>
+
+      <div class="field">
+        <label for="usuario">Usuario</label>
+        <input id="usuario" placeholder="Ej: bodega" />
+      </div>
+      <div class="field">
+        <label for="clave">Clave</label>
+        <input id="clave" type="password" placeholder="••••••••" />
+      </div>
+
+      <button class="btn btn-block" id="btn-login">Entrar</button>
+      <p class="error" id="error"></p>
+    </section>
+  </main>
+
+  <script>
+    const loginButton = document.getElementById('btn-login');
+    const error = document.getElementById('error');
+
+    async function login() {
+      const usuario = document.getElementById('usuario').value.trim();
+      const clave = document.getElementById('clave').value;
+      error.textContent = '';
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario, clave })
+      });
+
+      if (!res.ok) {
+        error.textContent = 'Credenciales inválidas. Intenta nuevamente.';
+        return;
+      }
+
+      const data = await res.json();
+      localStorage.setItem('token', data.token);
+      window.location.href = '/dashboard.html';
+    }
+
+    loginButton.addEventListener('click', login);
+    document.getElementById('clave').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') login();
+    });
+  </script>
+</body>
+</html>
