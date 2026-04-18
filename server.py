@@ -40,7 +40,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def do_GET(self) -> None:
-        if self.path.startswith("/api/search"):
+        if self.path.startswith("/api/search") or self.path.startswith("/api/inventario"):
             self.handle_search()
             return
         if self.path in ("/", "/dashboard.html"):
@@ -63,9 +63,6 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_json({"token": token, "usuario": usuario}, HTTPStatus.OK)
 
     def handle_search(self) -> None:
-        if not self.require_auth():
-            return
-
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         items = self.svc.buscar(

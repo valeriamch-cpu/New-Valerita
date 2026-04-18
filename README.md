@@ -1,16 +1,18 @@
 # New-Valerita
 
-Ahora sí partimos con formato **app** (single-page) para operación de bodega.
+Versión directa: al abrir la app entra de inmediato a la página de inventario.
 
-## Qué incluye
+## Pantalla principal
 
-- Pantalla de login.
-- App principal con pestañas:
-  - Buscar ubicación
-  - Registrar entrada
-  - Registrar salida
-  - Mover producto
-- Backend HTTP con endpoints autenticados para esas operaciones.
+Muestra datos de bodega en tabla con columnas:
+
+- SKU
+- Código barra
+- Nombre
+- Marca
+- Stock
+- Rack
+- Caja
 
 ## Ejecutar
 
@@ -22,17 +24,17 @@ Abrir en navegador:
 
 - `http://localhost:8000`
 
-Usuarios demo:
+## Backend
 
-- `admin / 1234`
-- `bodega / valerita2026`
+- `GET /api/inventario` (también `GET /api/search`)
+- Filtros: `sku`, `codigo_barra`, `marca`
 
 ## Archivos principales
 
-- `server.py` (API + servidor web)
-- `web/index.html` (UI tipo app)
-- `src/new_valerita/inventory.py` (reglas de inventario)
-- `db/schema.sql` (modelo de datos)
+- `web/index.html`
+- `server.py`
+- `src/new_valerita/inventory.py`
+- `db/schema.sql`
 
 ## Tests
 
