@@ -1,18 +1,11 @@
 # New-Valerita
 
-Versión directa: al abrir la app entra de inmediato a la página de inventario.
+Flujo solicitado:
 
-## Pantalla principal
-
-Muestra datos de bodega en tabla con columnas:
-
-- SKU
-- Código barra
-- Nombre
-- Marca
-- Stock
-- Rack
-- Caja
+1. Página principal de bienvenida (`/`).
+2. Botón **Entrar** que lleva al buscador simple (`/buscador.html`).
+3. Buscador por código de barras, SKU, nombre o marca.
+4. Tabla de resultados con ubicación (rack/caja) y opción de eliminar.
 
 ## Ejecutar
 
@@ -20,24 +13,18 @@ Muestra datos de bodega en tabla con columnas:
 python server.py
 ```
 
-Abrir en navegador:
+Luego abrir:
 
 - `http://localhost:8000`
 
-## Backend
+## API usada por UI
 
-- `GET /api/inventario` (también `GET /api/search`)
-- Filtros: `sku`, `codigo_barra`, `marca`
+- `GET /api/inventario?codigo_barra=&sku=&nombre=&marca=`
+- `POST /api/eliminar`
 
-## Archivos principales
+## Estructura clave
 
-- `web/index.html`
+- `web/index.html` (bienvenida)
+- `web/buscador.html` (buscador + eliminar)
 - `server.py`
 - `src/new_valerita/inventory.py`
-- `db/schema.sql`
-
-## Tests
-
-```bash
-python -m unittest discover -s tests -p 'test_*.py'
-```

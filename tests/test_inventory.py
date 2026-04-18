@@ -88,6 +88,34 @@ class InventoryServiceTests(unittest.TestCase):
         self.assertEqual(origen[0]["cantidad"], 6)
         self.assertEqual(destino[0]["cantidad"], 4)
 
+    def test_busqueda_por_nombre(self) -> None:
+        self.svc.registrar_entrada(
+            sku="SKU-ABC",
+            codigo_barra="750000001111",
+            marca="ACME",
+            nombre="Perno Largo",
+            rack="R-10",
+            contenedor="C-99",
+            cantidad=2,
+        )
+        result = self.svc.buscar(nombre="perno")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["sku"], "SKU-ABC")
+
+    def test_eliminar_ubicacion(self) -> None:
+        self.svc.registrar_entrada(
+            sku="SKU-DEL",
+            codigo_barra="750000009999",
+            marca="ACME",
+            nombre="Producto Borrar",
+            rack="R-05",
+            contenedor="C-01",
+            cantidad=7,
+        )
+        self.svc.eliminar_ubicacion("SKU-DEL", "R-05", "C-01")
+        result = self.svc.buscar(sku="SKU-DEL")
+        self.assertEqual(result, [])
+
 
 if __name__ == "__main__":
     unittest.main()

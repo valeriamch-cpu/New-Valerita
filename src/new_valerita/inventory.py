@@ -215,6 +215,35 @@ class InventoryService:
         )
         self.conn.commit()
 
+    def eliminar_ubicacion(self, sku: str, rack: str, contenedor: str, usuario: str | None = None) -> None:
+        row = self.conn.execute(
+            """
+            SELECT p.id AS producto_id, u.id AS ubicacion_id, i.id AS inventario_id, i.cantidad
+            FROM productos p
+            JOIN inventario_ubicacion i ON i.producto_id = p.id
+            JOIN ubicaciones u ON u.id = i.ubicacion_id
+            WHERE p.sku = ? AND u.rack = ? AND u.contenedor = ? AND i.activo = 1
+            """,
+            (sku, rack, contenedor),
+        ).fetchone()
+        if not row:
+            raise ValueError("No existe inventario activo para ese SKU y ubicación")
+
+        cantidad_actual = int(row["cantidad"])
+        self.conn.execute(
+            "UPDATE inventario_ubicacion SET cantidad = 0, activo = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (row["inventario_id"],),
+        )
+        if cantidad_actual > 0:
+            self.conn.execute(
+                """
+                INSERT INTO movimientos (tipo, producto_id, ubicacion_origen_id, cantidad, usuario, observacion)
+                VALUES ('salida', ?, ?, ?, ?, 'eliminacion_ubicacion')
+                """,
+                (row["producto_id"], row["ubicacion_id"], cantidad_actual, usuario),
+            )
+        self.conn.commit()
+
     def buscar(self, **filters: Any) -> list[dict[str, Any]]:
         clauses = ["i.activo = 1", "u.activo = 1"]
         params: list[Any] = []
@@ -228,6 +257,9 @@ class InventoryService:
         if filters.get("marca"):
             clauses.append("LOWER(p.marca) LIKE LOWER(?)")
             params.append(f"%{filters['marca']}%")
+        if filters.get("nombre"):
+            clauses.append("LOWER(p.nombre) LIKE LOWER(?)")
+            params.append(f"%{filters['nombre']}%")
         if filters.get("contenedor"):
             clauses.append("u.contenedor = ?")
             params.append(filters["contenedor"])

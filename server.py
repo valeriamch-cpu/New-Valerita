@@ -32,6 +32,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             "/api/entrada": self.handle_entrada,
             "/api/salida": self.handle_salida,
             "/api/movimiento": self.handle_movimiento,
+            "/api/eliminar": self.handle_eliminar,
         }
         handler = routes.get(self.path)
         if handler:
@@ -69,6 +70,7 @@ class AppHandler(SimpleHTTPRequestHandler):
             sku=self.first(query, "sku"),
             codigo_barra=self.first(query, "codigo_barra"),
             marca=self.first(query, "marca"),
+            nombre=self.first(query, "nombre"),
             contenedor=self.first(query, "contenedor"),
         )
         self.send_json({"items": items}, HTTPStatus.OK)
@@ -159,6 +161,30 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
 
         self.send_json({"ok": True, "message": "Movimiento registrado"}, HTTPStatus.OK)
+
+    def handle_eliminar(self) -> None:
+        data = self.read_json_body()
+        if data is None:
+            return
+
+        required = ["sku", "rack", "contenedor"]
+        missing = [k for k in required if k not in data or data[k] in ("", None)]
+        if missing:
+            self.send_json({"error": f"Campos requeridos: {', '.join(missing)}"}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            self.svc.eliminar_ubicacion(
+                sku=str(data["sku"]),
+                rack=str(data["rack"]),
+                contenedor=str(data["contenedor"]),
+                usuario="web",
+            )
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        self.send_json({"ok": True, "message": "Ubicación eliminada"}, HTTPStatus.OK)
 
     def read_json_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", "0"))
