@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buscador | Valerita</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#f4f7fc;color:#16233f}
+    .wrap{max-width:1100px;margin:20px auto;padding:0 14px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+    .box{background:#fff;border:1px solid #dbe4f2;border-radius:12px;padding:14px;box-shadow:0 8px 20px rgba(0,0,0,.04)}
+    .filters{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin-bottom:10px}
+    input{width:100%;padding:10px;border-radius:8px;border:1px solid #cfd8ea}
+    button{padding:10px 12px;border:none;border-radius:8px;background:#1f6feb;color:white;font-weight:700;cursor:pointer}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid #e6edf9;text-align:left;font-size:14px;vertical-align:top}
+    th{background:#f8fbff}
+    .del{background:#ef4444}
+    @media (max-width:900px){.filters{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h2>Buscador simple de productos</h2>
+      <button onclick="window.location.href='/'">Inicio</button>
+    </div>
+
+    <section class="box">
+      <div class="filters">
+        <input id="codigo_barra" placeholder="Escanear código / código barra" />
+        <input id="sku" placeholder="Buscar por SKU" />
+        <input id="nombre" placeholder="Buscar por nombre" />
+        <input id="marca" placeholder="Buscar por marca" />
+      </div>
+      <button id="buscar">Buscar</button>
+      <span id="estado"></span>
+
+      <table>
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Código barra</th>
+            <th>Nombre</th>
+            <th>Marca</th>
+            <th>Stock</th>
+            <th>Rack</th>
+            <th>Caja</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script>
+    async function cargar() {
+      const params = new URLSearchParams();
+      ['codigo_barra','sku','nombre','marca'].forEach((id) => {
+        const v = document.getElementById(id).value.trim();
+        if (v) params.set(id, v);
+      });
+
+      const res = await fetch('/api/inventario?' + params.toString());
+      const data = await res.json();
+      const items = data.items || [];
+
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      items.forEach((i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${i.sku}</td>
+          <td>${i.codigo_barra ?? ''}</td>
+          <td>${i.nombre}</td>
+          <td>${i.marca}</td>
+          <td>${i.cantidad}</td>
+          <td>${i.rack}</td>
+          <td>${i.contenedor}</td>
+          <td><button class="del" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('estado').textContent = ` ${items.length} resultados`;
+
+      document.querySelectorAll('.del').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm('¿Eliminar este producto de esta ubicación?')) return;
+          const payload = {
+            sku: btn.dataset.sku,
+            rack: btn.dataset.rack,
+            contenedor: btn.dataset.cont,
+          };
+          const r = await fetch('/api/eliminar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const j = await r.json();
+          if (!r.ok) return alert(j.error || 'No se pudo eliminar');
+          await cargar();
+        };
+      });
+    }
+
+    document.getElementById('buscar').onclick = cargar;
+    ['codigo_barra','sku','nombre','marca'].forEach((id) => {
+      document.getElementById(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') cargar();
+      });
+    });
+
+    cargar();
+  </script>
+</body>
+</html>
