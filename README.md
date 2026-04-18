@@ -7,17 +7,26 @@ Flujo solicitado:
 3. Buscador por código de barras, SKU, nombre o marca.
 4. Tabla de resultados con ubicación (rack/caja) y opción de eliminar.
 
-## Ejecutar
+## Ejecutar local (con backend Python)
 
 ```bash
 python server.py
 ```
 
-Luego abrir:
+Abrir:
 
 - `http://localhost:8000`
 
-## API usada por UI
+## GitHub Pages (estático)
+
+Si abres en `valeriamch-cpu.github.io/New-Valerita/`, no existe backend Python.
+Por eso el buscador corre en **modo estático** leyendo:
+
+- `web/data/inventario.json`
+
+La eliminación en GitHub Pages se guarda en `localStorage` del navegador (no en servidor).
+
+## API usada por UI (modo local)
 
 - `GET /api/inventario?codigo_barra=&sku=&nombre=&marca=`
 - `POST /api/eliminar`
@@ -26,5 +35,6 @@ Luego abrir:
 
 - `web/index.html` (bienvenida)
 - `web/buscador.html` (buscador + eliminar)
+- `web/data/inventario.json` (datos estáticos para GitHub Pages)
 - `server.py`
 - `src/new_valerita/inventory.py`

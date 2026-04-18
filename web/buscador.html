@@ -23,7 +23,7 @@
   <div class="wrap">
     <div class="top">
       <h2>Buscador simple de productos</h2>
-      <button onclick="window.location.href='/'">Inicio</button>
+      <button onclick="window.location.href='index.html'">Inicio</button>
     </div>
 
     <section class="box">
@@ -55,17 +55,26 @@
   </div>
 
   <script>
-    async function cargar() {
-      const params = new URLSearchParams();
-      ['codigo_barra','sku','nombre','marca'].forEach((id) => {
-        const v = document.getElementById(id).value.trim();
-        if (v) params.set(id, v);
+    const staticMode = window.location.hostname.endsWith('github.io');
+    const LOCAL_KEY = 'valerita_inventario_local';
+    let cacheItems = [];
+
+    function filtroLocal(items) {
+      const codigo = document.getElementById('codigo_barra').value.trim().toLowerCase();
+      const sku = document.getElementById('sku').value.trim().toLowerCase();
+      const nombre = document.getElementById('nombre').value.trim().toLowerCase();
+      const marca = document.getElementById('marca').value.trim().toLowerCase();
+
+      return items.filter((i) => {
+        const okCodigo = !codigo || String(i.codigo_barra || '').toLowerCase().includes(codigo);
+        const okSku = !sku || String(i.sku || '').toLowerCase().includes(sku);
+        const okNombre = !nombre || String(i.nombre || '').toLowerCase().includes(nombre);
+        const okMarca = !marca || String(i.marca || '').toLowerCase().includes(marca);
+        return okCodigo && okSku && okNombre && okMarca;
       });
+    }
 
-      const res = await fetch('/api/inventario?' + params.toString());
-      const data = await res.json();
-      const items = data.items || [];
-
+    function render(items) {
       const tbody = document.getElementById('tbody');
       tbody.innerHTML = '';
       items.forEach((i) => {
@@ -87,21 +96,56 @@
       document.querySelectorAll('.del').forEach((btn) => {
         btn.onclick = async () => {
           if (!confirm('¿Eliminar este producto de esta ubicación?')) return;
-          const payload = {
-            sku: btn.dataset.sku,
-            rack: btn.dataset.rack,
-            contenedor: btn.dataset.cont,
-          };
-          const r = await fetch('/api/eliminar', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const j = await r.json();
-          if (!r.ok) return alert(j.error || 'No se pudo eliminar');
+          await eliminar(btn.dataset.sku, btn.dataset.rack, btn.dataset.cont);
           await cargar();
         };
       });
+    }
+
+    async function cargarDesdeStatic() {
+      const saved = localStorage.getItem(LOCAL_KEY);
+      if (saved) {
+        cacheItems = JSON.parse(saved);
+        return;
+      }
+      const res = await fetch('./data/inventario.json');
+      const data = await res.json();
+      cacheItems = data.items || [];
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+    }
+
+    async function eliminar(sku, rack, contenedor) {
+      if (staticMode) {
+        cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+        return;
+      }
+
+      const payload = { sku, rack, contenedor };
+      const r = await fetch('/api/eliminar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'No se pudo eliminar');
+    }
+
+    async function cargar() {
+      if (staticMode) {
+        await cargarDesdeStatic();
+        render(filtroLocal(cacheItems));
+        return;
+      }
+
+      const params = new URLSearchParams();
+      ['codigo_barra','sku','nombre','marca'].forEach((id) => {
+        const v = document.getElementById(id).value.trim();
+        if (v) params.set(id, v);
+      });
+      const res = await fetch('/api/inventario?' + params.toString());
+      const data = await res.json();
+      render(data.items || []);
     }
 
     document.getElementById('buscar').onclick = cargar;
@@ -111,7 +155,9 @@
       });
     });
 
-    cargar();
+    cargar().catch((e) => {
+      document.getElementById('estado').textContent = ` Error: ${e.message}`;
+    });
   </script>
 </body>
 </html>
