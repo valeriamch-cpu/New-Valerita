@@ -1,40 +1,30 @@
 # New-Valerita
 
-Flujo solicitado:
+## ¿Por qué se veía “estructura de código” y no app?
 
-1. Página principal de bienvenida (`/`).
-2. Botón **Entrar** que lleva al buscador simple (`/buscador.html`).
-3. Buscador por código de barras, SKU, nombre o marca.
-4. Tabla de resultados con ubicación (rack/caja) y opción de eliminar.
+Porque GitHub Pages muestra la raíz del repo. Antes la UI principal estaba en `web/`, por eso no abría directo como app.
 
-## Ejecutar local (con backend Python)
+## Solución aplicada
 
-```bash
-python server.py
-```
+Ahora la app está lista en la **raíz** del repositorio para GitHub Pages:
+
+- `index.html` (bienvenida)
+- `buscador.html` (buscador + eliminar)
+- `data/inventario.json` (base inicial de productos)
+- `.nojekyll` (evita conflictos de render en Pages)
+
+## Uso en GitHub Pages
 
 Abrir:
 
-- `http://localhost:8000`
+- `https://valeriamch-cpu.github.io/New-Valerita/`
 
-## GitHub Pages (estático)
+Flujo:
+1. Bienvenido
+2. Entrar
+3. Buscar por código barra / SKU / nombre / marca
+4. Ver ubicación y eliminar
 
-Si abres en `valeriamch-cpu.github.io/New-Valerita/`, no existe backend Python.
-Por eso el buscador corre en **modo estático** leyendo:
+## Nota
 
-- `web/data/inventario.json`
-
-La eliminación en GitHub Pages se guarda en `localStorage` del navegador (no en servidor).
-
-## API usada por UI (modo local)
-
-- `GET /api/inventario?codigo_barra=&sku=&nombre=&marca=`
-- `POST /api/eliminar`
-
-## Estructura clave
-
-- `web/index.html` (bienvenida)
-- `web/buscador.html` (buscador + eliminar)
-- `web/data/inventario.json` (datos estáticos para GitHub Pages)
-- `server.py`
-- `src/new_valerita/inventory.py`
+En GitHub Pages no corre Python backend; este modo funciona 100% estático con `localStorage` para eliminaciones.
