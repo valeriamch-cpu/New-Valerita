@@ -16,6 +16,7 @@
     th,td{padding:10px;border-bottom:1px solid #e6edf9;text-align:left;font-size:14px;vertical-align:top}
     th{background:#f8fbff}
     .del{background:#ef4444}
+    .mode{font-size:12px;color:#5b6b89;margin-left:6px}
     @media (max-width:900px){.filters{grid-template-columns:repeat(2,1fr)}}
   </style>
 </head>
@@ -35,6 +36,7 @@
       </div>
       <button id="buscar">Buscar</button>
       <span id="estado"></span>
+      <div id="mode" class="mode"></div>
 
       <table>
         <thead>
@@ -54,10 +56,45 @@
     </section>
   </div>
 
+  <script src="../config.js"></script>
   <script>
-    const staticMode = window.location.hostname.endsWith('github.io');
     const LOCAL_KEY = 'valerita_inventario_local';
+    const supabaseConfig = window.SUPABASE_CONFIG || {};
+    const sheetsConfig = window.GOOGLE_SHEETS_CONFIG || {};
+
+    const hasSupabase = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
+    const hasGoogleSheets = Boolean(sheetsConfig.sheetId);
     let cacheItems = [];
+
+    function sourceModeText() {
+      if (hasGoogleSheets) return 'Modo: Google Sheets (base externa)';
+      if (hasSupabase) return 'Modo: Supabase (base externa)';
+      return 'Modo: Local (data/inventario.json + localStorage)';
+    }
+
+    document.getElementById('mode').textContent = sourceModeText();
+
+    function normalizeHeader(value) {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    }
+
+    function normalizeRow(row, idx) {
+      return {
+        id: row.id ?? idx + 1,
+        sku: String(row.sku || row.codigo_sku || '').trim(),
+        codigo_barra: String(row.codigo_barra || row.codigo || row.barcode || '').trim(),
+        nombre: String(row.nombre || row.producto || '').trim(),
+        marca: String(row.marca || '').trim(),
+        cantidad: Number(row.cantidad ?? row.stock ?? 0),
+        rack: String(row.rack || '').trim(),
+        contenedor: String(row.contenedor || row.caja || '').trim(),
+      };
+    }
 
     function filtroLocal(items) {
       const codigo = document.getElementById('codigo_barra').value.trim().toLowerCase();
@@ -87,7 +124,7 @@
           <td>${i.cantidad}</td>
           <td>${i.rack}</td>
           <td>${i.contenedor}</td>
-          <td><button class="del" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button></td>
+          <td><button class="del" data-id="${i.id ?? ''}" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button></td>
         `;
         tbody.appendChild(tr);
       });
@@ -96,62 +133,145 @@
       document.querySelectorAll('.del').forEach((btn) => {
         btn.onclick = async () => {
           if (!confirm('¿Eliminar este producto de esta ubicación?')) return;
-          await eliminar(btn.dataset.sku, btn.dataset.rack, btn.dataset.cont);
+          await eliminar(btn.dataset.id, btn.dataset.sku, btn.dataset.rack, btn.dataset.cont);
           await cargar();
         };
       });
     }
 
-    async function cargarDesdeStatic() {
-      const saved = localStorage.getItem(LOCAL_KEY);
-      if (saved) {
-        cacheItems = JSON.parse(saved);
+    function supabaseHeaders() {
+      return {
+        'apikey': supabaseConfig.anonKey,
+        'Authorization': `Bearer ${supabaseConfig.anonKey}`,
+        'Content-Type': 'application/json'
+      };
+    }
+
+    function readFilters() {
+      return {
+        codigo_barra: document.getElementById('codigo_barra').value.trim(),
+        sku: document.getElementById('sku').value.trim(),
+        nombre: document.getElementById('nombre').value.trim(),
+        marca: document.getElementById('marca').value.trim(),
+      };
+    }
+
+    async function cargarSupabase() {
+      const f = readFilters();
+      const params = new URLSearchParams({ select: '*' });
+      if (f.codigo_barra) params.set('codigo_barra', `ilike.*${f.codigo_barra}*`);
+      if (f.sku) params.set('sku', `ilike.*${f.sku}*`);
+      if (f.nombre) params.set('nombre', `ilike.*${f.nombre}*`);
+      if (f.marca) params.set('marca', `ilike.*${f.marca}*`);
+
+      const url = `${supabaseConfig.url}/rest/v1/inventario?${params.toString()}`;
+      const res = await fetch(url, { headers: supabaseHeaders() });
+      if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+      const rows = await res.json();
+      return rows.map(normalizeRow);
+    }
+
+    function parseGviz(text) {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end < 0) throw new Error('Respuesta inválida de Google Sheets');
+      return JSON.parse(text.slice(start, end + 1));
+    }
+
+    async function cargarGoogleSheets() {
+      const gid = sheetsConfig.gid ?? '0';
+      const sheetName = sheetsConfig.sheetName;
+      const params = new URLSearchParams({ tqx: 'out:json' });
+      if (sheetName) {
+        params.set('sheet', sheetName);
+      } else {
+        params.set('gid', gid);
+      }
+
+      const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetsConfig.sheetId)}/gviz/tq?${params.toString()}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Google Sheets error: ${res.status}`);
+      const text = await res.text();
+      const parsed = parseGviz(text);
+      const cols = parsed.table.cols.map((c) => normalizeHeader(c.label || c.id));
+      const rows = parsed.table.rows.map((r) => {
+        const out = {};
+        cols.forEach((col, idx) => {
+          out[col] = r.c[idx] ? r.c[idx].v : '';
+        });
+        return out;
+      });
+
+      cacheItems = rows.map(normalizeRow);
+      return filtroLocal(cacheItems);
+    }
+
+    async function eliminar(id, sku, rack, contenedor) {
+      if (hasSupabase) {
+        let url = `${supabaseConfig.url}/rest/v1/inventario`;
+        if (id) {
+          url += `?id=eq.${encodeURIComponent(id)}`;
+        } else {
+          url += `?sku=eq.${encodeURIComponent(sku)}&rack=eq.${encodeURIComponent(rack)}&contenedor=eq.${encodeURIComponent(contenedor)}`;
+        }
+        const r = await fetch(url, { method: 'DELETE', headers: supabaseHeaders() });
+        if (!r.ok) throw new Error('No se pudo eliminar en Supabase');
         return;
       }
-      const res = await fetch('./data/inventario.json');
-      const data = await res.json();
-      cacheItems = data.items || [];
+
+      if (hasGoogleSheets && sheetsConfig.appsScriptUrl) {
+        const r = await fetch(sheetsConfig.appsScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', sku, rack, contenedor }),
+        });
+        if (!r.ok) throw new Error('No se pudo eliminar en Google Sheets');
+        return;
+      }
+
+      if (hasGoogleSheets && !sheetsConfig.appsScriptUrl) {
+        throw new Error('Google Sheets conectado en modo lectura. Para eliminar, agrega appsScriptUrl en config.js');
+      }
+
+      cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
       localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
     }
 
-    async function eliminar(sku, rack, contenedor) {
-      if (staticMode) {
-        cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
+    async function cargarLocal() {
+      const saved = localStorage.getItem(LOCAL_KEY);
+      if (saved) {
+        cacheItems = JSON.parse(saved);
+      } else {
+        const res = await fetch('./data/inventario.json');
+        const data = await res.json();
+        cacheItems = data.items || [];
         localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
-        return;
       }
-
-      const payload = { sku, rack, contenedor };
-      const r = await fetch('/api/eliminar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'No se pudo eliminar');
+      return filtroLocal(cacheItems);
     }
 
     async function cargar() {
-      if (staticMode) {
-        await cargarDesdeStatic();
-        render(filtroLocal(cacheItems));
-        return;
-      }
-
-      const params = new URLSearchParams();
-      ['codigo_barra','sku','nombre','marca'].forEach((id) => {
-        const v = document.getElementById(id).value.trim();
-        if (v) params.set(id, v);
-      });
-      const res = await fetch('/api/inventario?' + params.toString());
-      const data = await res.json();
-      render(data.items || []);
+      const items = hasGoogleSheets
+        ? await cargarGoogleSheets()
+        : hasSupabase
+          ? await cargarSupabase()
+          : await cargarLocal();
+      render(items);
     }
 
-    document.getElementById('buscar').onclick = cargar;
+    document.getElementById('buscar').onclick = () => {
+      cargar().catch((e) => {
+        document.getElementById('estado').textContent = ` Error: ${e.message}`;
+      });
+    };
+
     ['codigo_barra','sku','nombre','marca'].forEach((id) => {
       document.getElementById(id).addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') cargar();
+        if (e.key === 'Enter') {
+          cargar().catch((err) => {
+            document.getElementById('estado').textContent = ` Error: ${err.message}`;
+          });
+        }
       });
     });
 

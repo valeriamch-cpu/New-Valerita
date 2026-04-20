@@ -1,30 +1,45 @@
 # New-Valerita
 
-## ¿Por qué se veía “estructura de código” y no app?
-
-Porque GitHub Pages muestra la raíz del repo. Antes la UI principal estaba en `web/`, por eso no abría directo como app.
-
-## Solución aplicada
-
-Ahora la app está lista en la **raíz** del repositorio para GitHub Pages:
+## App en GitHub Pages
 
 - `index.html` (bienvenida)
 - `buscador.html` (buscador + eliminar)
-- `data/inventario.json` (base inicial de productos)
-- `.nojekyll` (evita conflictos de render en Pages)
+- `config.js` (conexión a fuentes externas)
+- `data/inventario.json` (respaldo local)
 
-## Uso en GitHub Pages
+## Conexión actual: Google Sheets
 
-Abrir:
+La app ya viene configurada para leer tu hoja:
+
+- `https://docs.google.com/spreadsheets/d/141S3HMqerG55owN-sor2EIqn0AEHV-0JZcvzPvptdJE/edit`
+
+El buscador usa este orden:
+
+1. **Google Sheets** (si `sheetId` está configurado).
+2. **Supabase** (si `url` + `anonKey` están configurados).
+3. **JSON local** (`data/inventario.json`) como fallback.
+
+## Campos esperados en la hoja
+
+Encabezados (en cualquier orden, sin importar mayúsculas/acentos):
+
+- `sku`
+- `codigo_barra` (o `codigo`, `barcode`)
+- `nombre` (o `producto`)
+- `marca`
+- `cantidad` (o `stock`)
+- `rack`
+- `contenedor` (o `caja`)
+
+## Eliminar registros
+
+- En **Google Sheets**, la eliminación directa requiere configurar `appsScriptUrl` en `config.js`.
+- Si no hay `appsScriptUrl`, el modo Google Sheets queda en **solo lectura** y el botón eliminar mostrará aviso.
+
+Guía:
+
+- `docs/google-sheets-setup.md`
+
+## URL pública
 
 - `https://valeriamch-cpu.github.io/New-Valerita/`
-
-Flujo:
-1. Bienvenido
-2. Entrar
-3. Buscar por código barra / SKU / nombre / marca
-4. Ver ubicación y eliminar
-
-## Nota
-
-En GitHub Pages no corre Python backend; este modo funciona 100% estático con `localStorage` para eliminaciones.
