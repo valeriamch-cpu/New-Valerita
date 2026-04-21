@@ -63,10 +63,12 @@
     const sheetsConfig = window.GOOGLE_SHEETS_CONFIG || {};
 
     const hasSupabase = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
-    const hasGoogleSheets = Boolean(sheetsConfig.sheetId);
+    const hasGoogleSheets = Boolean(sheetsConfig.sheetId || sheetsConfig.appsScriptUrl);
     let cacheItems = [];
 
     function sourceModeText() {
+      if (hasGoogleSheets && sheetsConfig.appsScriptUrl) return 'Modo: Google Sheets vía Apps Script';
+      if (hasGoogleSheets && sheetsConfig.publicCsvUrl) return 'Modo: Google Sheets vía CSV publicado';
       if (hasGoogleSheets) return 'Modo: Google Sheets (base externa)';
       if (hasSupabase) return 'Modo: Supabase (base externa)';
       return 'Modo: Local (data/inventario.json + localStorage)';
@@ -196,6 +198,13 @@
 
         window[callbackName] = (payload) => {
           cleanup();
+          if (!payload || payload.status !== 'ok' || !payload.table) {
+            const errText = payload?.errors?.map((e) => e?.detailed_message || e?.message).filter(Boolean).join(' | ')
+              || payload?.status
+              || 'Respuesta GViz inválida';
+            reject(new Error(errText));
+            return;
+          }
           resolve(payload);
         };
 
@@ -254,6 +263,11 @@
     }
 
     function mapGvizToObjects(parsed) {
+      if (!parsed || !parsed.table || !Array.isArray(parsed.table.cols) || !Array.isArray(parsed.table.rows)) {
+        const detail = parsed?.errors?.map((e) => e?.detailed_message || e?.message).filter(Boolean).join(' | ')
+          || 'GViz sin table/cols/rows';
+        throw new Error(detail);
+      }
       const cols = parsed.table.cols.map((c) => normalizeHeader(c.label || c.id));
       return parsed.table.rows.map((r) => {
         const out = {};
@@ -265,6 +279,39 @@
     }
 
     async function cargarGoogleSheets() {
+      if (sheetsConfig.appsScriptUrl) {
+        try {
+          const f = readFilters();
+          const params = new URLSearchParams({ action: 'list' });
+          Object.entries(f).forEach(([k, v]) => {
+            if (v) params.set(k, v);
+          });
+
+          const getUrl = `${sheetsConfig.appsScriptUrl}${sheetsConfig.appsScriptUrl.includes('?') ? '&' : '?'}${params.toString()}`;
+          const r = await fetch(getUrl);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const payload = await r.json();
+          const rows = Array.isArray(payload) ? payload : (payload.items || []);
+          return mapRowsFromObjects(rows);
+        } catch (err) {
+          // Si Apps Script falla, seguimos con estrategias directas Google Sheets.
+        }
+      }
+
+      if (sheetsConfig.publicCsvUrl) {
+        try {
+          const r = await fetch(sheetsConfig.publicCsvUrl);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const text = await r.text();
+          return mapRowsFromObjects(parseCsvToObjects(text));
+        } catch (err) {
+          // seguimos a conexión directa con sheetId
+        }
+      }
+
+      if (!sheetsConfig.sheetId) {
+        throw new Error('No hay fuente válida. Configura appsScriptUrl o publicCsvUrl en config.js');
+      }
       const sheetId = encodeURIComponent(sheetsConfig.sheetId);
       const gid = sheetsConfig.gid ?? '0';
       const sheetName = sheetsConfig.sheetName;
@@ -302,8 +349,9 @@
         }
       }
 
+      const detalle = errors.join(' | ');
       throw new Error(
-        `No se pudo leer Google Sheets. Verifica compartir como "Anyone with the link / Viewer" y el gid. Detalle: ${errors.join(' | ')}`
+        `No se pudo leer Google Sheets directo. Recomendado: configurar appsScriptUrl (más estable) o publicCsvUrl en config.js. Detalle: ${detalle}`
       );
     }
 

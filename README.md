@@ -15,9 +15,11 @@ La app ya viene configurada para leer tu hoja:
 
 El buscador usa este orden:
 
-1. **Google Sheets** (si `sheetId` está configurado).
-2. **Supabase** (si `url` + `anonKey` están configurados).
-3. **JSON local** (`data/inventario.json`) como fallback.
+1. **Apps Script** (si `appsScriptUrl` está configurado).
+2. **CSV publicado** (si `publicCsvUrl` está configurado).
+3. **Google Sheets** directo (si `sheetId` está configurado).
+4. **Supabase** (si `url` + `anonKey` están configurados).
+5. **JSON local** (`data/inventario.json`) como fallback.
 
 Si Google Sheets falla por permisos/CORS, el buscador ahora cambia automáticamente a modo local y muestra el detalle del error en pantalla.
 

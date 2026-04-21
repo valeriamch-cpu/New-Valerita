@@ -49,6 +49,34 @@ Google Sheets no permite `DELETE` directo desde GitHub Pages. Para borrar filas 
 
 Si `appsScriptUrl` está vacío, la app usa Google Sheets en modo solo lectura.
 
+Si `appsScriptUrl` está configurado, la app intenta primero leer inventario desde Apps Script con:
+
+- `GET <appsScriptUrl>?action=list&sku=...&codigo_barra=...&nombre=...&marca=...`
+
+Respuesta esperada (cualquiera de las dos):
+
+```json
+[{ "sku": "SKU-1", "codigo_barra": "123", "nombre": "Prod", "marca": "Marca", "cantidad": 10, "rack": "R1", "contenedor": "C1" }]
+```
+
+o
+
+```json
+{ "items": [ ... ] }
+```
+
+## 4.1) Alternativa simple: CSV publicado
+
+Si no quieres Apps Script, puedes publicar una pestaña como CSV y usar `publicCsvUrl`:
+
+1. En Google Sheets: **Archivo → Compartir → Publicar en la web**.
+2. Elige la pestaña y formato **CSV**.
+3. Copia la URL pública y pégala en `config.js`:
+
+```js
+publicCsvUrl: 'https://docs.google.com/spreadsheets/d/e/.../pub?output=csv'
+```
+
 ## 5) Si aparece `Error: Failed to fetch`
 
 Eso normalmente indica permisos de la hoja o bloqueo CORS del endpoint seleccionado.
@@ -60,4 +88,4 @@ Checklist rápido:
 3. Si usas nombre de pestaña, prueba con `sheetName`.
 4. Reintenta en incógnito para descartar caché.
 
-La app intenta varias rutas (`gviz` por JSONP, `gviz` por fetch y `export csv`) y, si todas fallan, cae a `data/inventario.json` como respaldo.
+La app intenta Apps Script, CSV publicado y luego rutas directas (`gviz` por JSONP, `gviz` por fetch y `export csv`); si todas fallan, cae a `data/inventario.json` como respaldo.

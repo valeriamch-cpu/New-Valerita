@@ -10,7 +10,11 @@ window.GOOGLE_SHEETS_CONFIG = {
   sheetId: '141S3HMqerG55owN-sor2EIqn0AEHV-0JZcvzPvptdJE',
   gid: '0',
   sheetName: '',
-  // Opcional: endpoint de Apps Script para permitir eliminación directa sobre la hoja.
+  // Opcional: URL CSV publicada (Archivo -> Compartir -> Publicar en la web -> CSV)
+  // publicCsvUrl: 'https://docs.google.com/spreadsheets/d/e/.../pub?output=csv'
+  publicCsvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQTKf_MVDfSJiyo4f7325RNyI1M2bggGWBvoUNuWoWirecMTjJHEonaGwvcAZ24diANIaa28hXWB_ls/pub?gid=0&single=true&output=csv',
+  // Opcional: endpoint de Apps Script para leer + eliminar directo sobre la hoja.
+  // Si lo completas, el buscador intentará primero cargar datos desde aquí.
   // appsScriptUrl: 'https://script.google.com/macros/s/AKfyc.../exec'
   appsScriptUrl: ''
 };
