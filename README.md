@@ -19,6 +19,8 @@ El buscador usa este orden:
 2. **Supabase** (si `url` + `anonKey` están configurados).
 3. **JSON local** (`data/inventario.json`) como fallback.
 
+Si Google Sheets falla por permisos/CORS, el buscador ahora cambia automáticamente a modo local y muestra el detalle del error en pantalla.
+
 ## Campos esperados en la hoja
 
 Encabezados (en cualquier orden, sin importar mayúsculas/acentos):

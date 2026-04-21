@@ -48,3 +48,16 @@ Google Sheets no permite `DELETE` directo desde GitHub Pages. Para borrar filas 
 3. Publica el script y pega su URL en `appsScriptUrl`.
 
 Si `appsScriptUrl` está vacío, la app usa Google Sheets en modo solo lectura.
+
+## 5) Si aparece `Error: Failed to fetch`
+
+Eso normalmente indica permisos de la hoja o bloqueo CORS del endpoint seleccionado.
+
+Checklist rápido:
+
+1. Confirma: **Share → Anyone with the link → Viewer**.
+2. Verifica que `sheetId` y `gid` sean correctos.
+3. Si usas nombre de pestaña, prueba con `sheetName`.
+4. Reintenta en incógnito para descartar caché.
+
+La app intenta varias rutas (`gviz` y `export csv`) y, si todas fallan, cae a `data/inventario.json` como respaldo.

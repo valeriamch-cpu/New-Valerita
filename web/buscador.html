@@ -178,32 +178,96 @@
       return JSON.parse(text.slice(start, end + 1));
     }
 
-    async function cargarGoogleSheets() {
-      const gid = sheetsConfig.gid ?? '0';
-      const sheetName = sheetsConfig.sheetName;
-      const params = new URLSearchParams({ tqx: 'out:json' });
-      if (sheetName) {
-        params.set('sheet', sheetName);
-      } else {
-        params.set('gid', gid);
-      }
+    function mapRowsFromObjects(rows) {
+      cacheItems = rows.map(normalizeRow);
+      return filtroLocal(cacheItems);
+    }
 
-      const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetsConfig.sheetId)}/gviz/tq?${params.toString()}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`Google Sheets error: ${res.status}`);
-      const text = await res.text();
-      const parsed = parseGviz(text);
+    function parseCsvLine(line) {
+      const out = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+        if (c === ',' && !inQuotes) {
+          out.push(current);
+          current = '';
+          continue;
+        }
+        current += c;
+      }
+      out.push(current);
+      return out;
+    }
+
+    function parseCsvToObjects(csvText) {
+      const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (!lines.length) return [];
+      const headers = parseCsvLine(lines[0]).map((h) => normalizeHeader(h));
+      return lines.slice(1).map((line) => {
+        const cols = parseCsvLine(line);
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = cols[idx] ?? '';
+        });
+        return row;
+      });
+    }
+
+    function mapGvizToObjects(parsed) {
       const cols = parsed.table.cols.map((c) => normalizeHeader(c.label || c.id));
-      const rows = parsed.table.rows.map((r) => {
+      return parsed.table.rows.map((r) => {
         const out = {};
         cols.forEach((col, idx) => {
           out[col] = r.c[idx] ? r.c[idx].v : '';
         });
         return out;
       });
+    }
 
-      cacheItems = rows.map(normalizeRow);
-      return filtroLocal(cacheItems);
+    async function cargarGoogleSheets() {
+      const sheetId = encodeURIComponent(sheetsConfig.sheetId);
+      const gid = sheetsConfig.gid ?? '0';
+      const sheetName = sheetsConfig.sheetName;
+      const attempts = [];
+
+      const mainParams = new URLSearchParams({ tqx: 'out:json' });
+      if (sheetName) {
+        mainParams.set('sheet', sheetName);
+      } else {
+        mainParams.set('gid', gid);
+      }
+      attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?${mainParams.toString()}` });
+      attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json` });
+      attempts.push({ type: 'csv', url: `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${encodeURIComponent(gid)}` });
+
+      const errors = [];
+      for (const attempt of attempts) {
+        try {
+          const res = await fetch(attempt.url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (attempt.type === 'gviz') {
+            return mapRowsFromObjects(mapGvizToObjects(parseGviz(text)));
+          }
+          return mapRowsFromObjects(parseCsvToObjects(text));
+        } catch (err) {
+          errors.push(`${attempt.type}: ${err.message}`);
+        }
+      }
+
+      throw new Error(
+        `No se pudo leer Google Sheets. Verifica compartir como "Anyone with the link / Viewer" y el gid. Detalle: ${errors.join(' | ')}`
+      );
     }
 
     async function eliminar(id, sku, rack, contenedor) {
@@ -251,11 +315,20 @@
     }
 
     async function cargar() {
-      const items = hasGoogleSheets
-        ? await cargarGoogleSheets()
-        : hasSupabase
-          ? await cargarSupabase()
-          : await cargarLocal();
+      if (hasGoogleSheets) {
+        try {
+          const items = await cargarGoogleSheets();
+          render(items);
+          return;
+        } catch (err) {
+          document.getElementById('mode').textContent = 'Modo: Google Sheets sin acceso, usando respaldo local';
+          const localItems = await cargarLocal();
+          render(localItems);
+          throw err;
+        }
+      }
+
+      const items = hasSupabase ? await cargarSupabase() : await cargarLocal();
       render(items);
     }
 
