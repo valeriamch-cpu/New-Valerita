@@ -48,10 +48,14 @@ Google Sheets no permite `DELETE` directo desde GitHub Pages. Para borrar filas 
 3. Publica el script y pega su URL en `appsScriptUrl`.
 
 Si `appsScriptUrl` está vacío, la app usa Google Sheets en modo solo lectura.
+En ese caso, el botón **Eliminar** solo oculta filas localmente en el navegador.
+En ese caso, el botón **Editar** también aplica cambios solo localmente.
 
 Si `appsScriptUrl` está configurado, la app intenta primero leer inventario desde Apps Script con:
 
 - `GET <appsScriptUrl>?action=list&sku=...&codigo_barra=...&nombre=...&marca=...`
+- `POST <appsScriptUrl>` con `{ action: "update", sku, rack_original, contenedor_original, cantidad, rack, contenedor, ... }`
+- `POST <appsScriptUrl>` con `{ action: "delete", sku, rack, contenedor }`
 
 Respuesta esperada (cualquiera de las dos):
 

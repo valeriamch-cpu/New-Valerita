@@ -16,6 +16,7 @@
     th,td{padding:10px;border-bottom:1px solid #e6edf9;text-align:left;font-size:14px;vertical-align:top}
     th{background:#f8fbff}
     .del{background:#ef4444}
+    .edit{background:#0ea5a4}
     .mode{font-size:12px;color:#5b6b89;margin-left:6px}
     @media (max-width:900px){.filters{grid-template-columns:repeat(2,1fr)}}
   </style>
@@ -59,6 +60,8 @@
   <script src="../config.js"></script>
   <script>
     const LOCAL_KEY = 'valerita_inventario_local';
+    const DELETED_KEYS = 'valerita_deleted_keys';
+    const EDITED_ROWS_KEY = 'valerita_edited_rows';
     const supabaseConfig = window.SUPABASE_CONFIG || {};
     const sheetsConfig = window.GOOGLE_SHEETS_CONFIG || {};
 
@@ -98,6 +101,39 @@
       };
     }
 
+    function rowKey(item) {
+      return [item.sku, item.rack, item.contenedor].join('|').toLowerCase();
+    }
+
+    function getDeletedKeys() {
+      try {
+        return JSON.parse(localStorage.getItem(DELETED_KEYS) || '[]');
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function getEditedRows() {
+      try {
+        return JSON.parse(localStorage.getItem(EDITED_ROWS_KEY) || '{}');
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function applyEditedRows(items) {
+      const edited = getEditedRows();
+      return items.map((i) => {
+        const key = rowKey(i);
+        return edited[key] ? { ...i, ...edited[key] } : i;
+      });
+    }
+
+    function applyDeletedFilter(items) {
+      const deleted = new Set(getDeletedKeys());
+      return items.filter((i) => !deleted.has(rowKey(i)));
+    }
+
     function filtroLocal(items) {
       const codigo = document.getElementById('codigo_barra').value.trim().toLowerCase();
       const sku = document.getElementById('sku').value.trim().toLowerCase();
@@ -126,11 +162,47 @@
           <td>${i.cantidad}</td>
           <td>${i.rack}</td>
           <td>${i.contenedor}</td>
-          <td><button class="del" data-id="${i.id ?? ''}" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button></td>
+          <td>
+            <button class="edit"
+              data-id="${i.id ?? ''}"
+              data-sku="${i.sku}"
+              data-rack="${i.rack}"
+              data-cont="${i.contenedor}"
+              data-cantidad="${i.cantidad}"
+              data-codigo="${i.codigo_barra ?? ''}"
+              data-nombre="${i.nombre ?? ''}"
+              data-marca="${i.marca ?? ''}">Editar</button>
+            <button class="del" data-id="${i.id ?? ''}" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button>
+          </td>
         `;
         tbody.appendChild(tr);
       });
       document.getElementById('estado').textContent = ` ${items.length} resultados`;
+
+      document.querySelectorAll('.edit').forEach((btn) => {
+        btn.onclick = async () => {
+          const cantidad = prompt('Nuevo stock/cantidad', btn.dataset.cantidad || '0');
+          if (cantidad === null) return;
+          const rack = prompt('Nuevo rack', btn.dataset.rack || '');
+          if (rack === null) return;
+          const contenedor = prompt('Nueva caja/contenedor', btn.dataset.cont || '');
+          if (contenedor === null) return;
+
+          await editar({
+            id: btn.dataset.id,
+            sku: btn.dataset.sku,
+            codigo_barra: btn.dataset.codigo,
+            nombre: btn.dataset.nombre,
+            marca: btn.dataset.marca,
+            cantidad: Number(cantidad || 0),
+            rack,
+            contenedor,
+            rack_original: btn.dataset.rack,
+            contenedor_original: btn.dataset.cont,
+          });
+          await cargar();
+        };
+      });
 
       document.querySelectorAll('.del').forEach((btn) => {
         btn.onclick = async () => {
@@ -218,7 +290,8 @@
     }
 
     function mapRowsFromObjects(rows) {
-      cacheItems = rows.map(normalizeRow);
+      const normalized = rows.map(normalizeRow);
+      cacheItems = applyDeletedFilter(applyEditedRows(normalized));
       return filtroLocal(cacheItems);
     }
 
@@ -379,11 +452,76 @@
       }
 
       if (hasGoogleSheets && !sheetsConfig.appsScriptUrl) {
-        throw new Error('Google Sheets conectado en modo lectura. Para eliminar, agrega appsScriptUrl en config.js');
+        const deleted = new Set(getDeletedKeys());
+        deleted.add(rowKey({ sku, rack, contenedor }));
+        localStorage.setItem(DELETED_KEYS, JSON.stringify([...deleted]));
+        cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
+        return;
       }
 
       cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
       localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+    }
+
+    function updateInCache(payload) {
+      cacheItems = cacheItems.map((i) => {
+        if (i.sku === payload.sku && i.rack === payload.rack_original && i.contenedor === payload.contenedor_original) {
+          return {
+            ...i,
+            codigo_barra: payload.codigo_barra,
+            nombre: payload.nombre,
+            marca: payload.marca,
+            cantidad: Number(payload.cantidad || 0),
+            rack: payload.rack,
+            contenedor: payload.contenedor,
+          };
+        }
+        return i;
+      });
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+      const edited = getEditedRows();
+      edited[rowKey({ sku: payload.sku, rack: payload.rack_original, contenedor: payload.contenedor_original })] = {
+        codigo_barra: payload.codigo_barra,
+        nombre: payload.nombre,
+        marca: payload.marca,
+        cantidad: Number(payload.cantidad || 0),
+        rack: payload.rack,
+        contenedor: payload.contenedor,
+      };
+      localStorage.setItem(EDITED_ROWS_KEY, JSON.stringify(edited));
+    }
+
+    async function editar(payload) {
+      if (hasGoogleSheets && sheetsConfig.appsScriptUrl) {
+        const r = await fetch(sheetsConfig.appsScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update', ...payload }),
+        });
+        if (!r.ok) throw new Error('No se pudo editar en Google Sheets (Apps Script)');
+        return;
+      }
+
+      if (hasSupabase) {
+        if (!payload.id) throw new Error('No se puede editar en Supabase sin id');
+        const url = `${supabaseConfig.url}/rest/v1/inventario?id=eq.${encodeURIComponent(payload.id)}`;
+        const r = await fetch(url, {
+          method: 'PATCH',
+          headers: supabaseHeaders(),
+          body: JSON.stringify({
+            codigo_barra: payload.codigo_barra,
+            nombre: payload.nombre,
+            marca: payload.marca,
+            cantidad: Number(payload.cantidad || 0),
+            rack: payload.rack,
+            contenedor: payload.contenedor,
+          }),
+        });
+        if (!r.ok) throw new Error('No se pudo editar en Supabase');
+        return;
+      }
+
+      updateInCache(payload);
     }
 
     async function cargarLocal() {
