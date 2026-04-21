@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Valerita | Buscar producto</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <div class="topbar">
+      <h1>Buscador de bodega</h1>
+      <button class="ghost" id="logout">Salir</button>
+    </div>
+
+    <section class="card">
+      <p class="subtitle">Busca por SKU, código de barras o marca para ver rack y contenedor.</p>
+      <div class="grid">
+        <div>
+          <label for="sku">SKU</label>
+          <input id="sku" placeholder="SKU-001" />
+        </div>
+        <div>
+          <label for="codigo_barra">Código de barras</label>
+          <input id="codigo_barra" placeholder="750000000001" />
+        </div>
+        <div>
+          <label for="marca">Marca</label>
+          <input id="marca" placeholder="ACME" />
+        </div>
+      </div>
+      <p class="info">Tip: puedes llenar solo un campo o combinar filtros.</p>
+      <button class="btn" id="buscar">Buscar</button>
+    </section>
+
+    <section class="card" style="margin-top: 12px;">
+      <h2 style="margin-top:0;">Resultados</h2>
+      <div id="resultados" class="list"></div>
+    </section>
+  </main>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = '/index.html';
+    }
+
+    document.getElementById('logout').onclick = () => {
+      localStorage.removeItem('token');
+      window.location.href = '/index.html';
+    };
+
+    function render(items) {
+      const container = document.getElementById('resultados');
+      container.innerHTML = '';
+
+      if (!items.length) {
+        container.innerHTML = '<div class="empty">No se encontraron productos con esos filtros.</div>';
+        return;
+      }
+
+      items.forEach((item) => {
+        const node = document.createElement('article');
+        node.className = 'result-card';
+        node.innerHTML = `
+          <div class="result-head">
+            <strong>${item.nombre}</strong>
+            <span class="badge">${item.cantidad} uds</span>
+          </div>
+          <div class="meta">
+            <div><strong>SKU:</strong> ${item.sku}</div>
+            <div><strong>Marca:</strong> ${item.marca}</div>
+            <div><strong>Rack:</strong> ${item.rack}</div>
+            <div><strong>Contenedor:</strong> ${item.contenedor}</div>
+            <div><strong>Código:</strong> ${item.codigo_barra ?? '-'}</div>
+          </div>
+        `;
+        container.appendChild(node);
+      });
+    }
+
+    async function buscar() {
+      const params = new URLSearchParams();
+      ['sku', 'codigo_barra', 'marca'].forEach((id) => {
+        const value = document.getElementById(id).value.trim();
+        if (value) params.set(id, value);
+      });
+
+      const res = await fetch(`/api/search?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/index.html';
+        return;
+      }
+
+      const payload = await res.json();
+      render(payload.items || []);
+    }
+
+    document.getElementById('buscar').addEventListener('click', buscar);
+    ['sku', 'codigo_barra', 'marca'].forEach((id) => {
+      document.getElementById(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') buscar();
+      });
+    });
+
+    buscar();
+  </script>
+</body>
+</html>
