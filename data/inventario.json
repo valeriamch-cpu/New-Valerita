@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "sku": "SKU-001",
+      "codigo_barra": "750000000001",
+      "nombre": "Tuerca 1/2",
+      "marca": "ACME",
+      "cantidad": 14,
+      "rack": "R-01",
+      "contenedor": "C-07"
+    },
+    {
+      "sku": "SKU-001",
+      "codigo_barra": "750000000001",
+      "nombre": "Tuerca 1/2",
+      "marca": "ACME",
+      "cantidad": 8,
+      "rack": "R-03",
+      "contenedor": "C-11"
+    },
+    {
+      "sku": "SKU-777",
+      "codigo_barra": "750000000777",
+      "nombre": "Arandela 3/8",
+      "marca": "TORNIMAX",
+      "cantidad": 40,
+      "rack": "R-02",
+      "contenedor": "C-02"
+    }
+  ]
+}
