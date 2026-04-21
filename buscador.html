@@ -178,6 +178,36 @@
       return JSON.parse(text.slice(start, end + 1));
     }
 
+    function cargarGvizJsonp(urlBase) {
+      return new Promise((resolve, reject) => {
+        const callbackName = `valeritaGvizCb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const url = `${urlBase}${urlBase.includes('?') ? '&' : '?'}tqx=out:json;responseHandler:${callbackName}`;
+        const script = document.createElement('script');
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('Timeout cargando Google Sheets'));
+        }, 10000);
+
+        function cleanup() {
+          clearTimeout(timer);
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        window[callbackName] = (payload) => {
+          cleanup();
+          resolve(payload);
+        };
+
+        script.onerror = () => {
+          cleanup();
+          reject(new Error('Error cargando script Google Sheets'));
+        };
+        script.src = url;
+        document.head.appendChild(script);
+      });
+    }
+
     function mapRowsFromObjects(rows) {
       cacheItems = rows.map(normalizeRow);
       return filtroLocal(cacheItems);
@@ -240,19 +270,26 @@
       const sheetName = sheetsConfig.sheetName;
       const attempts = [];
 
-      const mainParams = new URLSearchParams({ tqx: 'out:json' });
+      const mainParams = new URLSearchParams();
       if (sheetName) {
         mainParams.set('sheet', sheetName);
       } else {
         mainParams.set('gid', gid);
       }
-      attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?${mainParams.toString()}` });
+      attempts.push({ type: 'gviz_jsonp', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?${mainParams.toString()}` });
+      attempts.push({ type: 'gviz_jsonp', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq` });
+      attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?${mainParams.toString()}&tqx=out:json` });
       attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json` });
       attempts.push({ type: 'csv', url: `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${encodeURIComponent(gid)}` });
 
       const errors = [];
       for (const attempt of attempts) {
         try {
+          if (attempt.type === 'gviz_jsonp') {
+            const parsed = await cargarGvizJsonp(attempt.url);
+            return mapRowsFromObjects(mapGvizToObjects(parsed));
+          }
+
           const res = await fetch(attempt.url);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const text = await res.text();

@@ -60,4 +60,4 @@ Checklist rápido:
 3. Si usas nombre de pestaña, prueba con `sheetName`.
 4. Reintenta en incógnito para descartar caché.
 
-La app intenta varias rutas (`gviz` y `export csv`) y, si todas fallan, cae a `data/inventario.json` como respaldo.
+La app intenta varias rutas (`gviz` por JSONP, `gviz` por fetch y `export csv`) y, si todas fallan, cae a `data/inventario.json` como respaldo.
