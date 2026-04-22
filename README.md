@@ -43,6 +43,14 @@ Encabezados (en cualquier orden, sin importar mayúsculas/acentos):
 - `rack`
 - `contenedor` (o `caja`)
 
+El buscador ahora permite filtrar por:
+- código de barra
+- SKU
+- nombre
+- marca
+- rack
+- caja/contenedor
+
 ## Eliminar registros
 
 - En **Google Sheets**, la eliminación directa requiere configurar `appsScriptUrl` en `config.js`.
