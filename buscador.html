@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Buscador | Valerita</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#f4f7fc;color:#16233f}
+    .wrap{max-width:1100px;margin:20px auto;padding:0 14px}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+    .box{background:#fff;border:1px solid #dbe4f2;border-radius:12px;padding:14px;box-shadow:0 8px 20px rgba(0,0,0,.04)}
+    .filters{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:10px;margin-bottom:10px}
+    input{width:100%;padding:10px;border-radius:8px;border:1px solid #cfd8ea}
+    button{padding:10px 12px;border:none;border-radius:8px;background:#1f6feb;color:white;font-weight:700;cursor:pointer}
+    .secondary{background:#475569}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px;border-bottom:1px solid #e6edf9;text-align:left;font-size:14px;vertical-align:top}
+    th{background:#f8fbff}
+    .del,.del-row{background:#ef4444}
+    .edit{background:#0ea5a4}
+    .mode{font-size:12px;color:#5b6b89;margin-left:6px}
+    @media (max-width:900px){.filters{grid-template-columns:repeat(2,1fr)}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h2>Buscador simple de productos</h2>
+      <button onclick="window.location.href='index.html'">Inicio</button>
+    </div>
+
+    <section class="box">
+      <div class="filters">
+        <input id="codigo_barra" placeholder="Escanear código / código barra" />
+        <input id="sku" placeholder="Buscar por SKU" />
+        <input id="nombre" placeholder="Buscar por nombre" />
+        <input id="marca" placeholder="Buscar por marca" />
+        <input id="rack" placeholder="Buscar por rack" />
+        <input id="caja" placeholder="Buscar por caja/contenedor" />
+      </div>
+      <button id="buscar">Buscar</button>
+      <button id="editar_masivo" class="secondary">Editar seleccionados</button>
+      <button id="eliminar_masivo" class="del">Eliminar seleccionados</button>
+      <span id="estado"></span>
+      <div id="mode" class="mode"></div>
+
+      <table>
+        <thead>
+          <tr>
+            <th><input id="select_all" type="checkbox" /></th>
+            <th>SKU</th>
+            <th>Código barra</th>
+            <th>Nombre</th>
+            <th>Marca</th>
+            <th>Stock</th>
+            <th>Rack</th>
+            <th>Caja</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    const LOCAL_KEY = 'valerita_inventario_local';
+    const DELETED_KEYS = 'valerita_deleted_keys';
+    const EDITED_ROWS_KEY = 'valerita_edited_rows';
+    const supabaseConfig = window.SUPABASE_CONFIG || {};
+    const sheetsConfig = window.GOOGLE_SHEETS_CONFIG || {};
+
+    const hasSupabase = Boolean(supabaseConfig.url && supabaseConfig.anonKey);
+    const hasGoogleSheets = Boolean(sheetsConfig.sheetId || sheetsConfig.appsScriptUrl);
+    let cacheItems = [];
+
+    function sourceModeText() {
+      if (hasGoogleSheets && sheetsConfig.appsScriptUrl) return 'Modo: Google Sheets vía Apps Script';
+      if (hasGoogleSheets && sheetsConfig.publicCsvUrl) return 'Modo: Google Sheets vía CSV publicado';
+      if (hasGoogleSheets) return 'Modo: Google Sheets (base externa)';
+      if (hasSupabase) return 'Modo: Supabase (base externa)';
+      return 'Modo: Local (data/inventario.json + localStorage)';
+    }
+
+    document.getElementById('mode').textContent = sourceModeText();
+
+    function normalizeHeader(value) {
+      return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    }
+
+    function normalizeRow(row, idx) {
+      return {
+        id: row.id ?? idx + 1,
+        sku: String(row.sku || row.codigo_sku || '').trim(),
+        codigo_barra: String(row.codigo_barra || row.codigo || row.barcode || '').trim(),
+        nombre: String(row.nombre || row.producto || '').trim(),
+        marca: String(row.marca || '').trim(),
+        cantidad: Number(row.cantidad ?? row.stock ?? 0),
+        rack: String(row.rack || '').trim(),
+        contenedor: String(row.contenedor || row.caja || '').trim(),
+      };
+    }
+
+    function rowKey(item) {
+      return [item.sku, item.rack, item.contenedor].join('|').toLowerCase();
+    }
+
+    function getDeletedKeys() {
+      try {
+        return JSON.parse(localStorage.getItem(DELETED_KEYS) || '[]');
+      } catch (_) {
+        return [];
+      }
+    }
+
+    function getEditedRows() {
+      try {
+        return JSON.parse(localStorage.getItem(EDITED_ROWS_KEY) || '{}');
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function applyEditedRows(items) {
+      const edited = getEditedRows();
+      return items.map((i) => {
+        const key = rowKey(i);
+        return edited[key] ? { ...i, ...edited[key] } : i;
+      });
+    }
+
+    function applyDeletedFilter(items) {
+      const deleted = new Set(getDeletedKeys());
+      return items.filter((i) => !deleted.has(rowKey(i)));
+    }
+
+    function filtroLocal(items) {
+      const codigo = document.getElementById('codigo_barra').value.trim().toLowerCase();
+      const sku = document.getElementById('sku').value.trim().toLowerCase();
+      const nombre = document.getElementById('nombre').value.trim().toLowerCase();
+      const marca = document.getElementById('marca').value.trim().toLowerCase();
+      const rack = document.getElementById('rack').value.trim().toLowerCase();
+      const caja = document.getElementById('caja').value.trim().toLowerCase();
+
+      return items.filter((i) => {
+        const okCodigo = !codigo || String(i.codigo_barra || '').toLowerCase().includes(codigo);
+        const okSku = !sku || String(i.sku || '').toLowerCase().includes(sku);
+        const okNombre = !nombre || String(i.nombre || '').toLowerCase().includes(nombre);
+        const okMarca = !marca || String(i.marca || '').toLowerCase().includes(marca);
+        const okRack = !rack || String(i.rack || '').toLowerCase().includes(rack);
+        const okCaja = !caja || String(i.contenedor || '').toLowerCase().includes(caja);
+        return okCodigo && okSku && okNombre && okMarca && okRack && okCaja;
+      });
+    }
+
+    function render(items) {
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      items.forEach((i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <input class="row-select" type="checkbox"
+              data-id="${i.id ?? ''}"
+              data-sku="${i.sku}"
+              data-rack="${i.rack}"
+              data-cont="${i.contenedor}"
+              data-cantidad="${i.cantidad}"
+              data-codigo="${i.codigo_barra ?? ''}"
+              data-nombre="${i.nombre ?? ''}"
+              data-marca="${i.marca ?? ''}" />
+          </td>
+          <td>${i.sku}</td>
+          <td>${i.codigo_barra ?? ''}</td>
+          <td>${i.nombre}</td>
+          <td>${i.marca}</td>
+          <td>${i.cantidad}</td>
+          <td>${i.rack}</td>
+          <td>${i.contenedor}</td>
+          <td>
+            <button class="edit"
+              data-id="${i.id ?? ''}"
+              data-sku="${i.sku}"
+              data-rack="${i.rack}"
+              data-cont="${i.contenedor}"
+              data-cantidad="${i.cantidad}"
+              data-codigo="${i.codigo_barra ?? ''}"
+              data-nombre="${i.nombre ?? ''}"
+              data-marca="${i.marca ?? ''}">Editar</button>
+            <button class="del-row" data-id="${i.id ?? ''}" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('estado').textContent = ` ${items.length} resultados`;
+
+      document.querySelectorAll('.edit').forEach((btn) => {
+        btn.onclick = async () => {
+          const cantidad = prompt('Nuevo stock/cantidad', btn.dataset.cantidad || '0');
+          if (cantidad === null) return;
+          const rack = prompt('Nuevo rack', btn.dataset.rack || '');
+          if (rack === null) return;
+          const contenedor = prompt('Nueva caja/contenedor', btn.dataset.cont || '');
+          if (contenedor === null) return;
+
+          await editar({
+            id: btn.dataset.id,
+            sku: btn.dataset.sku,
+            codigo_barra: btn.dataset.codigo,
+            nombre: btn.dataset.nombre,
+            marca: btn.dataset.marca,
+            cantidad: Number(cantidad || 0),
+            rack,
+            contenedor,
+            rack_original: btn.dataset.rack,
+            contenedor_original: btn.dataset.cont,
+          });
+          await cargar();
+        };
+      });
+
+      document.querySelectorAll('.del-row').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm('¿Eliminar este producto de esta ubicación?')) return;
+          await eliminar(btn.dataset.id, btn.dataset.sku, btn.dataset.rack, btn.dataset.cont);
+          await cargar();
+        };
+      });
+
+      const selectAll = document.getElementById('select_all');
+      if (selectAll) {
+        selectAll.checked = false;
+        selectAll.onchange = () => {
+          document.querySelectorAll('.row-select').forEach((cb) => {
+            cb.checked = selectAll.checked;
+          });
+        };
+      }
+    }
+
+    function selectedRows() {
+      return [...document.querySelectorAll('.row-select:checked')].map((cb) => ({
+        id: cb.dataset.id,
+        sku: cb.dataset.sku,
+        rack: cb.dataset.rack,
+        contenedor: cb.dataset.cont,
+        cantidad: Number(cb.dataset.cantidad || 0),
+        codigo_barra: cb.dataset.codigo,
+        nombre: cb.dataset.nombre,
+        marca: cb.dataset.marca,
+      }));
+    }
+
+    function supabaseHeaders() {
+      return {
+        'apikey': supabaseConfig.anonKey,
+        'Authorization': `Bearer ${supabaseConfig.anonKey}`,
+        'Content-Type': 'application/json'
+      };
+    }
+
+    function readFilters() {
+      return {
+        codigo_barra: document.getElementById('codigo_barra').value.trim(),
+        sku: document.getElementById('sku').value.trim(),
+        nombre: document.getElementById('nombre').value.trim(),
+        marca: document.getElementById('marca').value.trim(),
+        rack: document.getElementById('rack').value.trim(),
+        contenedor: document.getElementById('caja').value.trim(),
+      };
+    }
+
+    async function cargarSupabase() {
+      const f = readFilters();
+      const params = new URLSearchParams({ select: '*' });
+      if (f.codigo_barra) params.set('codigo_barra', `ilike.*${f.codigo_barra}*`);
+      if (f.sku) params.set('sku', `ilike.*${f.sku}*`);
+      if (f.nombre) params.set('nombre', `ilike.*${f.nombre}*`);
+      if (f.marca) params.set('marca', `ilike.*${f.marca}*`);
+      if (f.rack) params.set('rack', `ilike.*${f.rack}*`);
+      if (f.contenedor) params.set('contenedor', `ilike.*${f.contenedor}*`);
+
+      const url = `${supabaseConfig.url}/rest/v1/inventario?${params.toString()}`;
+      const res = await fetch(url, { headers: supabaseHeaders() });
+      if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+      const rows = await res.json();
+      return rows.map(normalizeRow);
+    }
+
+    function parseGviz(text) {
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start < 0 || end < 0) throw new Error('Respuesta inválida de Google Sheets');
+      return JSON.parse(text.slice(start, end + 1));
+    }
+
+    function cargarGvizJsonp(urlBase) {
+      return new Promise((resolve, reject) => {
+        const callbackName = `valeritaGvizCb_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const url = `${urlBase}${urlBase.includes('?') ? '&' : '?'}tqx=out:json;responseHandler:${callbackName}`;
+        const script = document.createElement('script');
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('Timeout cargando Google Sheets'));
+        }, 10000);
+
+        function cleanup() {
+          clearTimeout(timer);
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        window[callbackName] = (payload) => {
+          cleanup();
+          if (!payload || payload.status !== 'ok' || !payload.table) {
+            const errText = payload?.errors?.map((e) => e?.detailed_message || e?.message).filter(Boolean).join(' | ')
+              || payload?.status
+              || 'Respuesta GViz inválida';
+            reject(new Error(errText));
+            return;
+          }
+          resolve(payload);
+        };
+
+        script.onerror = () => {
+          cleanup();
+          reject(new Error('Error cargando script Google Sheets'));
+        };
+        script.src = url;
+        document.head.appendChild(script);
+      });
+    }
+
+    function mapRowsFromObjects(rows) {
+      const normalized = rows.map(normalizeRow);
+      cacheItems = applyDeletedFilter(applyEditedRows(normalized));
+      return filtroLocal(cacheItems);
+    }
+
+    function parseCsvLine(line) {
+      const out = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const c = line[i];
+        if (c === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+        if (c === ',' && !inQuotes) {
+          out.push(current);
+          current = '';
+          continue;
+        }
+        current += c;
+      }
+      out.push(current);
+      return out;
+    }
+
+    function parseCsvToObjects(csvText) {
+      const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (!lines.length) return [];
+      const headers = parseCsvLine(lines[0]).map((h) => normalizeHeader(h));
+      return lines.slice(1).map((line) => {
+        const cols = parseCsvLine(line);
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = cols[idx] ?? '';
+        });
+        return row;
+      });
+    }
+
+    function mapGvizToObjects(parsed) {
+      if (!parsed || !parsed.table || !Array.isArray(parsed.table.cols) || !Array.isArray(parsed.table.rows)) {
+        const detail = parsed?.errors?.map((e) => e?.detailed_message || e?.message).filter(Boolean).join(' | ')
+          || 'GViz sin table/cols/rows';
+        throw new Error(detail);
+      }
+      const cols = parsed.table.cols.map((c) => normalizeHeader(c.label || c.id));
+      return parsed.table.rows.map((r) => {
+        const out = {};
+        cols.forEach((col, idx) => {
+          out[col] = r.c[idx] ? r.c[idx].v : '';
+        });
+        return out;
+      });
+    }
+
+    async function cargarGoogleSheets() {
+      if (sheetsConfig.appsScriptUrl) {
+        try {
+          const f = readFilters();
+          const params = new URLSearchParams({ action: 'list' });
+          Object.entries(f).forEach(([k, v]) => {
+            if (v) params.set(k, v);
+          });
+
+          const getUrl = `${sheetsConfig.appsScriptUrl}${sheetsConfig.appsScriptUrl.includes('?') ? '&' : '?'}${params.toString()}`;
+          const r = await fetch(getUrl);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const payload = await r.json();
+          const rows = Array.isArray(payload) ? payload : (payload.items || []);
+          return mapRowsFromObjects(rows);
+        } catch (err) {
+          // Si Apps Script falla, seguimos con estrategias directas Google Sheets.
+        }
+      }
+
+      if (sheetsConfig.publicCsvUrl) {
+        try {
+          const r = await fetch(sheetsConfig.publicCsvUrl);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const text = await r.text();
+          return mapRowsFromObjects(parseCsvToObjects(text));
+        } catch (err) {
+          // seguimos a conexión directa con sheetId
+        }
+      }
+
+      if (!sheetsConfig.sheetId) {
+        throw new Error('No hay fuente válida. Configura appsScriptUrl o publicCsvUrl en config.js');
+      }
+      const sheetId = encodeURIComponent(sheetsConfig.sheetId);
+      const gid = sheetsConfig.gid ?? '0';
+      const sheetName = sheetsConfig.sheetName;
+      const attempts = [];
+
+      const mainParams = new URLSearchParams();
+      if (sheetName) {
+        mainParams.set('sheet', sheetName);
+      } else {
+        mainParams.set('gid', gid);
+      }
+      attempts.push({ type: 'gviz_jsonp', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?${mainParams.toString()}` });
+      attempts.push({ type: 'gviz_jsonp', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq` });
+      attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?${mainParams.toString()}&tqx=out:json` });
+      attempts.push({ type: 'gviz', url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json` });
+      attempts.push({ type: 'csv', url: `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${encodeURIComponent(gid)}` });
+
+      const errors = [];
+      for (const attempt of attempts) {
+        try {
+          if (attempt.type === 'gviz_jsonp') {
+            const parsed = await cargarGvizJsonp(attempt.url);
+            return mapRowsFromObjects(mapGvizToObjects(parsed));
+          }
+
+          const res = await fetch(attempt.url);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const text = await res.text();
+          if (attempt.type === 'gviz') {
+            return mapRowsFromObjects(mapGvizToObjects(parseGviz(text)));
+          }
+          return mapRowsFromObjects(parseCsvToObjects(text));
+        } catch (err) {
+          errors.push(`${attempt.type}: ${err.message}`);
+        }
+      }
+
+      const detalle = errors.join(' | ');
+      throw new Error(
+        `No se pudo leer Google Sheets directo. Recomendado: configurar appsScriptUrl (más estable) o publicCsvUrl en config.js. Detalle: ${detalle}`
+      );
+    }
+
+    async function eliminar(id, sku, rack, contenedor) {
+      if (hasSupabase) {
+        let url = `${supabaseConfig.url}/rest/v1/inventario`;
+        if (id) {
+          url += `?id=eq.${encodeURIComponent(id)}`;
+        } else {
+          url += `?sku=eq.${encodeURIComponent(sku)}&rack=eq.${encodeURIComponent(rack)}&contenedor=eq.${encodeURIComponent(contenedor)}`;
+        }
+        const r = await fetch(url, { method: 'DELETE', headers: supabaseHeaders() });
+        if (!r.ok) throw new Error('No se pudo eliminar en Supabase');
+        return;
+      }
+
+      if (hasGoogleSheets && sheetsConfig.appsScriptUrl) {
+        const r = await fetch(sheetsConfig.appsScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', sku, rack, contenedor }),
+        });
+        if (!r.ok) throw new Error('No se pudo eliminar en Google Sheets');
+        return;
+      }
+
+      if (hasGoogleSheets && !sheetsConfig.appsScriptUrl) {
+        const deleted = new Set(getDeletedKeys());
+        deleted.add(rowKey({ sku, rack, contenedor }));
+        localStorage.setItem(DELETED_KEYS, JSON.stringify([...deleted]));
+        cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
+        return;
+      }
+
+      cacheItems = cacheItems.filter((i) => !(i.sku === sku && i.rack === rack && i.contenedor === contenedor));
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+    }
+
+    function updateInCache(payload) {
+      cacheItems = cacheItems.map((i) => {
+        if (i.sku === payload.sku && i.rack === payload.rack_original && i.contenedor === payload.contenedor_original) {
+          return {
+            ...i,
+            codigo_barra: payload.codigo_barra,
+            nombre: payload.nombre,
+            marca: payload.marca,
+            cantidad: Number(payload.cantidad || 0),
+            rack: payload.rack,
+            contenedor: payload.contenedor,
+          };
+        }
+        return i;
+      });
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+      const edited = getEditedRows();
+      edited[rowKey({ sku: payload.sku, rack: payload.rack_original, contenedor: payload.contenedor_original })] = {
+        codigo_barra: payload.codigo_barra,
+        nombre: payload.nombre,
+        marca: payload.marca,
+        cantidad: Number(payload.cantidad || 0),
+        rack: payload.rack,
+        contenedor: payload.contenedor,
+      };
+      localStorage.setItem(EDITED_ROWS_KEY, JSON.stringify(edited));
+    }
+
+    async function editar(payload) {
+      if (hasGoogleSheets && sheetsConfig.appsScriptUrl) {
+        const r = await fetch(sheetsConfig.appsScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'update', ...payload }),
+        });
+        if (!r.ok) throw new Error('No se pudo editar en Google Sheets (Apps Script)');
+        return;
+      }
+
+      if (hasSupabase) {
+        if (!payload.id) throw new Error('No se puede editar en Supabase sin id');
+        const url = `${supabaseConfig.url}/rest/v1/inventario?id=eq.${encodeURIComponent(payload.id)}`;
+        const r = await fetch(url, {
+          method: 'PATCH',
+          headers: supabaseHeaders(),
+          body: JSON.stringify({
+            codigo_barra: payload.codigo_barra,
+            nombre: payload.nombre,
+            marca: payload.marca,
+            cantidad: Number(payload.cantidad || 0),
+            rack: payload.rack,
+            contenedor: payload.contenedor,
+          }),
+        });
+        if (!r.ok) throw new Error('No se pudo editar en Supabase');
+        return;
+      }
+
+      updateInCache(payload);
+    }
+
+    async function cargarLocal() {
+      const saved = localStorage.getItem(LOCAL_KEY);
+      if (saved) {
+        cacheItems = JSON.parse(saved);
+      } else {
+        const res = await fetch('./data/inventario.json');
+        const data = await res.json();
+        cacheItems = data.items || [];
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(cacheItems));
+      }
+      return filtroLocal(cacheItems);
+    }
+
+    async function cargar() {
+      if (hasGoogleSheets) {
+        try {
+          const items = await cargarGoogleSheets();
+          render(items);
+          return;
+        } catch (err) {
+          document.getElementById('mode').textContent = 'Modo: Google Sheets sin acceso, usando respaldo local';
+          const localItems = await cargarLocal();
+          render(localItems);
+          throw err;
+        }
+      }
+
+      const items = hasSupabase ? await cargarSupabase() : await cargarLocal();
+      render(items);
+    }
+
+    document.getElementById('buscar').onclick = () => {
+      cargar().catch((e) => {
+        document.getElementById('estado').textContent = ` Error: ${e.message}`;
+      });
+    };
+
+    document.getElementById('eliminar_masivo').onclick = async () => {
+      const rows = selectedRows();
+      if (!rows.length) {
+        document.getElementById('estado').textContent = ' Selecciona al menos 1 fila para eliminar.';
+        return;
+      }
+      if (!confirm(`¿Eliminar ${rows.length} registros seleccionados?`)) return;
+      try {
+        for (const r of rows) {
+          await eliminar(r.id, r.sku, r.rack, r.contenedor);
+        }
+        await cargar();
+      } catch (e) {
+        document.getElementById('estado').textContent = ` Error: ${e.message}`;
+      }
+    };
+
+    document.getElementById('editar_masivo').onclick = async () => {
+      const rows = selectedRows();
+      if (!rows.length) {
+        document.getElementById('estado').textContent = ' Selecciona al menos 1 fila para editar.';
+        return;
+      }
+
+      const cantidadTxt = prompt('Nuevo stock/cantidad para seleccionados (vacío = no cambiar):', '');
+      if (cantidadTxt === null) return;
+      const rack = prompt('Nuevo rack para seleccionados (vacío = no cambiar):', '');
+      if (rack === null) return;
+      const contenedor = prompt('Nueva caja/contenedor para seleccionados (vacío = no cambiar):', '');
+      if (contenedor === null) return;
+
+      try {
+        for (const r of rows) {
+          await editar({
+            id: r.id,
+            sku: r.sku,
+            codigo_barra: r.codigo_barra,
+            nombre: r.nombre,
+            marca: r.marca,
+            cantidad: cantidadTxt.trim() === '' ? r.cantidad : Number(cantidadTxt),
+            rack: rack.trim() === '' ? r.rack : rack,
+            contenedor: contenedor.trim() === '' ? r.contenedor : contenedor,
+            rack_original: r.rack,
+            contenedor_original: r.contenedor,
+          });
+        }
+        await cargar();
+      } catch (e) {
+        document.getElementById('estado').textContent = ` Error: ${e.message}`;
+      }
+    };
+
+    ['codigo_barra','sku','nombre','marca','rack','caja'].forEach((id) => {
+      document.getElementById(id).addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          cargar().catch((err) => {
+            document.getElementById('estado').textContent = ` Error: ${err.message}`;
+          });
+        }
+      });
+    });
+
+    cargar().catch((e) => {
+      document.getElementById('estado').textContent = ` Error: ${e.message}`;
+    });
+  </script>
+</body>
+</html>
