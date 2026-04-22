@@ -12,10 +12,11 @@
     .filters{display:grid;grid-template-columns:repeat(6,minmax(130px,1fr));gap:10px;margin-bottom:10px}
     input{width:100%;padding:10px;border-radius:8px;border:1px solid #cfd8ea}
     button{padding:10px 12px;border:none;border-radius:8px;background:#1f6feb;color:white;font-weight:700;cursor:pointer}
+    .secondary{background:#475569}
     table{width:100%;border-collapse:collapse;margin-top:10px}
     th,td{padding:10px;border-bottom:1px solid #e6edf9;text-align:left;font-size:14px;vertical-align:top}
     th{background:#f8fbff}
-    .del{background:#ef4444}
+    .del,.del-row{background:#ef4444}
     .edit{background:#0ea5a4}
     .mode{font-size:12px;color:#5b6b89;margin-left:6px}
     @media (max-width:900px){.filters{grid-template-columns:repeat(2,1fr)}}
@@ -38,12 +39,15 @@
         <input id="caja" placeholder="Buscar por caja/contenedor" />
       </div>
       <button id="buscar">Buscar</button>
+      <button id="editar_masivo" class="secondary">Editar seleccionados</button>
+      <button id="eliminar_masivo" class="del">Eliminar seleccionados</button>
       <span id="estado"></span>
       <div id="mode" class="mode"></div>
 
       <table>
         <thead>
           <tr>
+            <th><input id="select_all" type="checkbox" /></th>
             <th>SKU</th>
             <th>Código barra</th>
             <th>Nombre</th>
@@ -161,6 +165,17 @@
       items.forEach((i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+          <td>
+            <input class="row-select" type="checkbox"
+              data-id="${i.id ?? ''}"
+              data-sku="${i.sku}"
+              data-rack="${i.rack}"
+              data-cont="${i.contenedor}"
+              data-cantidad="${i.cantidad}"
+              data-codigo="${i.codigo_barra ?? ''}"
+              data-nombre="${i.nombre ?? ''}"
+              data-marca="${i.marca ?? ''}" />
+          </td>
           <td>${i.sku}</td>
           <td>${i.codigo_barra ?? ''}</td>
           <td>${i.nombre}</td>
@@ -178,7 +193,7 @@
               data-codigo="${i.codigo_barra ?? ''}"
               data-nombre="${i.nombre ?? ''}"
               data-marca="${i.marca ?? ''}">Editar</button>
-            <button class="del" data-id="${i.id ?? ''}" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button>
+            <button class="del-row" data-id="${i.id ?? ''}" data-sku="${i.sku}" data-rack="${i.rack}" data-cont="${i.contenedor}">Eliminar</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -210,13 +225,36 @@
         };
       });
 
-      document.querySelectorAll('.del').forEach((btn) => {
+      document.querySelectorAll('.del-row').forEach((btn) => {
         btn.onclick = async () => {
           if (!confirm('¿Eliminar este producto de esta ubicación?')) return;
           await eliminar(btn.dataset.id, btn.dataset.sku, btn.dataset.rack, btn.dataset.cont);
           await cargar();
         };
       });
+
+      const selectAll = document.getElementById('select_all');
+      if (selectAll) {
+        selectAll.checked = false;
+        selectAll.onchange = () => {
+          document.querySelectorAll('.row-select').forEach((cb) => {
+            cb.checked = selectAll.checked;
+          });
+        };
+      }
+    }
+
+    function selectedRows() {
+      return [...document.querySelectorAll('.row-select:checked')].map((cb) => ({
+        id: cb.dataset.id,
+        sku: cb.dataset.sku,
+        rack: cb.dataset.rack,
+        contenedor: cb.dataset.cont,
+        cantidad: Number(cb.dataset.cantidad || 0),
+        codigo_barra: cb.dataset.codigo,
+        nombre: cb.dataset.nombre,
+        marca: cb.dataset.marca,
+      }));
     }
 
     function supabaseHeaders() {
@@ -569,6 +607,58 @@
       cargar().catch((e) => {
         document.getElementById('estado').textContent = ` Error: ${e.message}`;
       });
+    };
+
+    document.getElementById('eliminar_masivo').onclick = async () => {
+      const rows = selectedRows();
+      if (!rows.length) {
+        document.getElementById('estado').textContent = ' Selecciona al menos 1 fila para eliminar.';
+        return;
+      }
+      if (!confirm(`¿Eliminar ${rows.length} registros seleccionados?`)) return;
+      try {
+        for (const r of rows) {
+          await eliminar(r.id, r.sku, r.rack, r.contenedor);
+        }
+        await cargar();
+      } catch (e) {
+        document.getElementById('estado').textContent = ` Error: ${e.message}`;
+      }
+    };
+
+    document.getElementById('editar_masivo').onclick = async () => {
+      const rows = selectedRows();
+      if (!rows.length) {
+        document.getElementById('estado').textContent = ' Selecciona al menos 1 fila para editar.';
+        return;
+      }
+
+      const cantidadTxt = prompt('Nuevo stock/cantidad para seleccionados (vacío = no cambiar):', '');
+      if (cantidadTxt === null) return;
+      const rack = prompt('Nuevo rack para seleccionados (vacío = no cambiar):', '');
+      if (rack === null) return;
+      const contenedor = prompt('Nueva caja/contenedor para seleccionados (vacío = no cambiar):', '');
+      if (contenedor === null) return;
+
+      try {
+        for (const r of rows) {
+          await editar({
+            id: r.id,
+            sku: r.sku,
+            codigo_barra: r.codigo_barra,
+            nombre: r.nombre,
+            marca: r.marca,
+            cantidad: cantidadTxt.trim() === '' ? r.cantidad : Number(cantidadTxt),
+            rack: rack.trim() === '' ? r.rack : rack,
+            contenedor: contenedor.trim() === '' ? r.contenedor : contenedor,
+            rack_original: r.rack,
+            contenedor_original: r.contenedor,
+          });
+        }
+        await cargar();
+      } catch (e) {
+        document.getElementById('estado').textContent = ` Error: ${e.message}`;
+      }
     };
 
     ['codigo_barra','sku','nombre','marca','rack','caja'].forEach((id) => {

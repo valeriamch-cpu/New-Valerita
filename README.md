@@ -31,6 +31,10 @@ Nota sobre botón **Editar**:
 - Con `appsScriptUrl`: edita en la base remota (acción `update`).
 - Con `publicCsvUrl` o Google Sheets directo sin Apps Script: edita solo en la vista local del navegador.
 
+También hay operaciones masivas en el buscador:
+- **Editar seleccionados**
+- **Eliminar seleccionados**
+
 ## Campos esperados en la hoja
 
 Encabezados (en cualquier orden, sin importar mayúsculas/acentos):
