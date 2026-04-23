@@ -16,7 +16,7 @@ window.GOOGLE_SHEETS_CONFIG = {
   // Opcional: endpoint de Apps Script para leer + eliminar directo sobre la hoja.
   // Si lo completas, el buscador intentará primero cargar datos desde aquí.
   // appsScriptUrl: 'https://script.google.com/macros/s/AKfyc.../exec'
-  appsScriptUrl: ''
+  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbxKHZnl0nGv4hai0cPr9_EXnvRzuyai7SeNp_5IK3BaT6C6zO2ds3OO2zrUjaNOT7v7rQ/exec'
 };
 
 window.SUPABASE_CONFIG = {
