@@ -35,6 +35,9 @@ También hay operaciones masivas en el buscador:
 - **Editar seleccionados**
 - **Eliminar seleccionados**
 
+Para evitar confusión en producción, `config.js` incluye:
+- `APP_CONFIG.allowLocalMutations = false` (por defecto), para bloquear ediciones/eliminaciones locales cuando no hay backend remoto de escritura.
+
 ## Campos esperados en la hoja
 
 Encabezados (en cualquier orden, sin importar mayúsculas/acentos):

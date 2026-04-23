@@ -68,6 +68,7 @@
     const LOCAL_KEY = 'valerita_inventario_local';
     const DELETED_KEYS = 'valerita_deleted_keys';
     const EDITED_ROWS_KEY = 'valerita_edited_rows';
+    const appConfig = window.APP_CONFIG || {};
     const supabaseConfig = window.SUPABASE_CONFIG || {};
     const sheetsConfig = window.GOOGLE_SHEETS_CONFIG || {};
 
@@ -500,6 +501,9 @@
       }
 
       if (hasGoogleSheets && !sheetsConfig.appsScriptUrl) {
+        if (!appConfig.allowLocalMutations) {
+          throw new Error('Modo lectura: para eliminar realmente en base remota configura appsScriptUrl (o activa allowLocalMutations solo para pruebas).');
+        }
         const deleted = new Set(getDeletedKeys());
         deleted.add(rowKey({ sku, rack, contenedor }));
         localStorage.setItem(DELETED_KEYS, JSON.stringify([...deleted]));
@@ -569,6 +573,9 @@
         return;
       }
 
+      if (!appConfig.allowLocalMutations && hasGoogleSheets && !sheetsConfig.appsScriptUrl) {
+        throw new Error('Modo lectura: para editar realmente en base remota configura appsScriptUrl (o activa allowLocalMutations solo para pruebas).');
+      }
       updateInCache(payload);
     }
 

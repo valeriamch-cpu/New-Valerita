@@ -23,3 +23,9 @@ window.SUPABASE_CONFIG = {
   url: '', // Ejemplo: https://xxxxx.supabase.co
   anonKey: '' // Tu anon public key
 };
+
+// Controla si en modo lectura (CSV/Sheets sin Apps Script) se permiten mutaciones locales
+// que NO escriben en la base real. Recomendado: false en producción.
+window.APP_CONFIG = {
+  allowLocalMutations: false
+};

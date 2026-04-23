@@ -51,6 +51,12 @@ Si `appsScriptUrl` está vacío, la app usa Google Sheets en modo solo lectura.
 En ese caso, el botón **Eliminar** solo oculta filas localmente en el navegador.
 En ese caso, el botón **Editar** también aplica cambios solo localmente.
 
+Si quieres impedir esas mutaciones locales (y exigir escritura real), deja en `config.js`:
+
+```js
+window.APP_CONFIG = { allowLocalMutations: false };
+```
+
 Si `appsScriptUrl` está configurado, la app intenta primero leer inventario desde Apps Script con:
 
 - `GET <appsScriptUrl>?action=list&sku=...&codigo_barra=...&nombre=...&marca=...`
